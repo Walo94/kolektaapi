@@ -1,0 +1,82 @@
+import {
+    Entity,
+    PrimaryGeneratedColumn,
+    Column,
+    CreateDateColumn,
+    UpdateDateColumn,
+} from "typeorm";
+
+export enum TypeAccount {
+    FREE = "free",
+    PREMIUM = "premium",
+}
+
+@Entity("users")
+export class User {
+    @PrimaryGeneratedColumn("uuid")
+    id!: string;
+
+    @Column({ type: "varchar", length: 100 })
+    fullName!: string;
+
+    @Column({
+        type: "varchar",
+        length: 255,
+        unique: true,
+    })
+    email!: string;
+
+    @Column({
+        type: "varchar",
+        length: 255,
+        unique: true,
+        nullable: true
+    })
+    phone!: string | null;
+
+    @Column({ type: "varchar", length: 255, select: false })
+    password!: string;
+
+    @Column({
+        type: "enum",
+        enum: TypeAccount,
+        default: TypeAccount.FREE,
+    })
+    userAccount!: TypeAccount
+
+    @Column({ type: "boolean", default: false })
+    twoFactorEnabled!: boolean;
+
+    @Column({ type: "varchar", length: 255, nullable: true, select: false })
+    twoFactorSecret!: string | null;
+
+    @Column({ type: "varchar", length: 255, nullable: true, select: false })
+    resetPasswordToken!: string | null;
+
+    @Column({ type: "timestamp", nullable: true, select: false })
+    resetPasswordExpires!: Date | null;
+
+    @Column({ type: "boolean", default: false })
+    emailVerified!: boolean;
+
+    @Column({ type: "varchar", length: 255, nullable: true, select: false })
+    emailVerificationToken!: string | null;
+
+    @Column({ type: "timestamp", nullable: true, select: false })
+    emailVerificationExpires!: Date | null;
+
+    @Column({ type: "varchar", length: 255, nullable: true })
+    googleId!: string | null;
+
+    @Column({ type: "varchar", length: 255, nullable: true })
+    profilePicture!: string | null;
+
+    @Column({ type: "boolean", default: false })
+    googleProfileIncomplete!: boolean;
+
+    @CreateDateColumn()
+    createdAt!: Date;
+
+    @UpdateDateColumn()
+    updatedAt!: Date;
+}
