@@ -1,0 +1,28 @@
+2026/04/07-11:34:43.305 6c04 Reusing MANIFEST C:\Users\SISTEMAS\Desktop\Desarrollo\kolektaapi\.wwebjs_auth\session\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/MANIFEST-000001
+2026/04/07-11:34:43.305 6c04 Recovering log #212
+2026/04/07-11:34:43.308 6c04 Reusing old log C:\Users\SISTEMAS\Desktop\Desarrollo\kolektaapi\.wwebjs_auth\session\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/000212.log 
+2026/04/07-12:55:33.339 6c04 Level-0 table #225: started
+2026/04/07-12:55:33.358 6c04 Level-0 table #225: 1325367 bytes OK
+2026/04/07-12:55:33.361 6c04 Delete type=0 #212
+2026/04/07-12:55:43.932 6c04 Compacting 1@1 + 9@2 files
+2026/04/07-12:55:43.982 6c04 Generated table #226@1: 38845 keys, 2200366 bytes
+2026/04/07-12:55:44.001 6c04 Generated table #227@1: 2832 keys, 2177293 bytes
+2026/04/07-12:55:44.027 6c04 Generated table #228@1: 2733 keys, 2145299 bytes
+2026/04/07-12:55:44.046 6c04 Generated table #229@1: 2797 keys, 2148325 bytes
+2026/04/07-12:55:44.089 6c04 Generated table #230@1: 32933 keys, 2242660 bytes
+2026/04/07-12:55:44.121 6c04 Generated table #231@1: 22973 keys, 2180846 bytes
+2026/04/07-12:55:44.173 6c04 Generated table #232@1: 81632 keys, 2225368 bytes
+2026/04/07-12:55:44.242 6c04 Generated table #233@1: 104404 keys, 2254801 bytes
+2026/04/07-12:55:44.261 6c04 Generated table #234@1: 33217 keys, 776159 bytes
+2026/04/07-12:55:44.261 6c04 Compacted 1@1 + 9@2 files => 18351117 bytes
+2026/04/07-12:55:44.262 6c04 compacted to: files[ 0 0 9 0 0 0 0 ]
+2026/04/07-12:55:44.262 6c04 Delete type=2 #214
+2026/04/07-12:55:44.262 6c04 Delete type=2 #215
+2026/04/07-12:55:44.262 6c04 Delete type=2 #216
+2026/04/07-12:55:44.262 6c04 Delete type=2 #217
+2026/04/07-12:55:44.262 6c04 Delete type=2 #218
+2026/04/07-12:55:44.263 6c04 Delete type=2 #219
+2026/04/07-12:55:44.263 6c04 Delete type=2 #220
+2026/04/07-12:55:44.263 6c04 Delete type=2 #221
+2026/04/07-12:55:44.263 6c04 Delete type=2 #222
+2026/04/07-12:55:44.263 6c04 Delete type=2 #225

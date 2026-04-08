@@ -1,6 +1,7 @@
 import { AppDataSource } from "@/config/data-source";
 import { User } from "@/entities/admin/User";
 import { EmailService } from "@/services/utils/EmailService";
+import { WhatsAppService } from "@/services/utils/WhatsAppService";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
@@ -70,8 +71,10 @@ export const UserService = {
         "email",
         "password",
         "fullName",
+        "phone",
         "userAccount",
         "emailVerified",
+        "phoneVerified",
         "createdAt",
       ],
     });
@@ -93,11 +96,42 @@ export const UserService = {
         id: user.id,
         fullName: user.fullName,
         email: user.email,
+        phone: user.phone,
+        userAccount: user.userAccount,
+        emailVerified: user.emailVerified,
+        phoneVerified: user.phoneVerified,
+        createdAt: user.createdAt,
+      },
+      token,
+    };
+  },
+
+  async refreshUserInfo(id: string) {
+    const user = await userRepo.findOne({
+      where: { id },
+      select: [
+        "id",
+        "email",
+        "fullName",
+        "phone",
+        "userAccount",
+        "emailVerified",
+        "createdAt",
+      ],
+    });
+
+    if (!user) throw new Error("No se puedo obtener la información");
+
+    return {
+      user: {
+        id: user.id,
+        fullName: user.fullName,
+        email: user.email,
+        phone: user.phone,
         userAccount: user.userAccount,
         emailVerified: user.emailVerified,
         createdAt: user.createdAt,
       },
-      token,
     };
   },
 
@@ -304,6 +338,118 @@ export const UserService = {
     }
 
     return { message: "Token válido" };
+  },
+
+  /**
+   * Genera un OTP de 6 dígitos, lo guarda hasheado y lo envía
+   * por WhatsApp al teléfono del usuario.
+   */
+  async sendPhoneVerificationCode(userId: string) {
+    const user = await userRepo.findOne({
+      where: { id: userId },
+      select: [
+        "id",
+        "phone",
+        "fullName",
+        "phoneVerified",
+        "phoneVerificationAttempts",
+      ],
+    });
+
+    if (!user) throw new Error("Usuario no encontrado");
+    if (!user.phone) throw new Error("El usuario no tiene teléfono registrado");
+    if (user.phoneVerified) throw new Error("El teléfono ya está verificado");
+
+    // Generar OTP de 6 dígitos
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Hashear para no guardar el código en texto plano
+    const hashedOtp = crypto.createHash("sha256").update(otp).digest("hex");
+
+    // Expiración: 10 minutos
+    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
+
+    await userRepo.update(user.id, {
+      phoneVerificationCode: hashedOtp,
+      phoneVerificationExpires: otpExpiry,
+      phoneVerificationAttempts: 0,
+    });
+
+    await WhatsAppService.sendPhoneVerificationCode(
+      user.phone,
+      otp,
+      user.fullName,
+    );
+
+    return { message: "Código de verificación enviado por WhatsApp" };
+  },
+
+  /**
+   * Verifica el OTP ingresado por el usuario.
+   * Protege contra fuerza bruta: máximo 5 intentos.
+   */
+  async verifyPhoneCode(userId: string, code: string) {
+    const user = await userRepo.findOne({
+      where: { id: userId },
+      select: [
+        "id",
+        "phone",
+        "fullName",
+        "phoneVerified",
+        "phoneVerificationCode",
+        "phoneVerificationExpires",
+        "phoneVerificationAttempts",
+      ],
+    });
+
+    if (!user) throw new Error("Usuario no encontrado");
+    if (user.phoneVerified) throw new Error("El teléfono ya está verificado");
+
+    // Control de intentos fallidos
+    if (user.phoneVerificationAttempts >= 5) {
+      throw new Error(
+        "Demasiados intentos fallidos. Solicita un nuevo código.",
+      );
+    }
+
+    if (!user.phoneVerificationCode || !user.phoneVerificationExpires) {
+      throw new Error("No hay un código activo. Solicita uno nuevo.");
+    }
+
+    if (user.phoneVerificationExpires < new Date()) {
+      throw new Error("El código ha expirado. Solicita uno nuevo.");
+    }
+
+    // Comparar con el hash guardado
+    const hashedInput = crypto
+      .createHash("sha256")
+      .update(code.trim())
+      .digest("hex");
+
+    if (hashedInput !== user.phoneVerificationCode) {
+      // Incrementar intentos fallidos
+      await userRepo.update(user.id, {
+        phoneVerificationAttempts: user.phoneVerificationAttempts + 1,
+      });
+      const remaining = 4 - user.phoneVerificationAttempts;
+      throw new Error(`Código incorrecto. Te quedan ${remaining} intento(s).`);
+    }
+
+    // Código correcto: marcar teléfono como verificado y limpiar campos
+    await userRepo.update(user.id, {
+      phoneVerified: true,
+      phoneVerificationCode: null,
+      phoneVerificationExpires: null,
+      phoneVerificationAttempts: 0,
+    });
+
+    // Enviar confirmación por WhatsApp
+    await WhatsAppService.sendPhoneVerifiedConfirmation(
+      user.phone!,
+      user.fullName,
+    );
+
+    return { message: "Teléfono verificado exitosamente" };
   },
 
   /**

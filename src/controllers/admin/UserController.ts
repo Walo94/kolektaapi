@@ -48,6 +48,21 @@ export const UserController = {
     }
   },
 
+  async refreshUserInfo(req: Request, res: Response) {
+    try {
+      const { id } = req.body;
+
+      if (!id) {
+        return res.status(400).json({ message: "Id no encontrado!" });
+      }
+
+      const result = await UserService.refreshUserInfo(id);
+      res.json(result);
+    } catch (error) {
+      res.status(401).json({ error: error.message });
+    }
+  },
+
   async changePassword(req: any, res: Response) {
     try {
       const { currentPassword, newPassword } = req.body;
@@ -151,6 +166,48 @@ export const UserController = {
         token as string,
         newPassword,
       );
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  },
+
+  /**
+   * POST /profile/send-phone-code
+   * Genera un OTP y lo envía por WhatsApp al teléfono del usuario.
+   * Requiere autenticación.
+   */
+  async sendPhoneVerificationCode(req: any, res: Response) {
+    try {
+      const userId = req.user.id;
+      const result = await UserService.sendPhoneVerificationCode(userId);
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  },
+
+  /**
+   * POST /profile/verify-phone
+   * Verifica el OTP ingresado por el usuario.
+   * Body: { code: string }
+   * Requiere autenticación.
+   */
+  async verifyPhoneCode(req: any, res: Response) {
+    try {
+      const userId = req.user.id;
+      const { code } = req.body;
+
+      if (!code) {
+        return res.status(400).json({ error: "El código es requerido" });
+      }
+      if (typeof code !== "string" || code.trim().length !== 6) {
+        return res
+          .status(400)
+          .json({ error: "El código debe tener 6 dígitos" });
+      }
+
+      const result = await UserService.verifyPhoneCode(userId, code);
       res.json(result);
     } catch (error: any) {
       res.status(400).json({ error: error.message });

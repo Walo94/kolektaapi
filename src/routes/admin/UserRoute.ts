@@ -27,4 +27,24 @@ router.put(
   UserController.changePassword,
 );
 
+// Enviar OTP de verificación de teléfono por WhatsApp
+router.post(
+  "/profile/send-phone-code",
+  authMiddleware,
+  UserController.sendPhoneVerificationCode,
+);
+
+// Verificar el OTP ingresado
+router.post(
+  "/profile/verify-phone",
+  authMiddleware,
+  UserController.verifyPhoneCode,
+);
+
+router.get(
+  "/profile/refresh-info",
+  authMiddleware,
+  UserController.refreshUserInfo,
+);
+
 export default router;
