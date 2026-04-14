@@ -4,9 +4,6 @@ import { authMiddleware } from "@/middlewares/authMiddleware";
 
 const router = Router();
 
-// ── Ruta pública ──────────────────────────────────────────
-router.get("/public/batch/:publicToken", BatchController.getPublicInfo);
-
 // ── Rutas protegidas ──────────────────────────────────────
 
 // Stats para el home screen (debe ir ANTES de /batchs/:id para evitar conflicto)

@@ -8,6 +8,8 @@ import {
   BatchDetail,
   BatchDetailStatus,
 } from "@/entities/modules/batchs/BatchDetail";
+import { ActivityService } from "@/services/modules/ActivityService";
+import { ActivityModule, ActivityType } from "@/entities/modules/Activity";
 import cloudinary from "@/config/cloudinary.config";
 import crypto from "crypto";
 
@@ -17,12 +19,15 @@ const detailRepo = AppDataSource.getRepository(BatchDetail);
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function calcDeliveryDate(
-  startDate: Date,
+  startDate: Date | string,
   frequency: BatchFrequency,
   row: number,
 ): Date {
-  // Copiamos la fecha asegurándonos que sea UTC
-  const date = new Date(startDate.getTime());
+  // MySQL devuelve las columnas tipo "date" como string "YYYY-MM-DD".
+  // Nos aseguramos de convertir a Date antes de operar.
+  const base =
+    startDate instanceof Date ? startDate : new Date(startDate as string);
+  const date = new Date(base.getTime());
 
   const periods = row - 1;
 
@@ -42,11 +47,12 @@ function calcDeliveryDate(
 
 function calcNextDelivery(batch: Batch): Date | null {
   if (batch.currentTurn >= batch.totalSlots) return null;
-  return calcDeliveryDate(
-    batch.startDate,
-    batch.frequency,
-    batch.currentTurn + 1,
-  );
+  // startDate puede ser string cuando viene de la DB (columna tipo "date")
+  const start =
+    batch.startDate instanceof Date
+      ? batch.startDate
+      : new Date(batch.startDate as unknown as string);
+  return calcDeliveryDate(start, batch.frequency, batch.currentTurn + 1);
 }
 
 function shuffle<T>(arr: T[]): T[] {
@@ -57,6 +63,14 @@ function shuffle<T>(arr: T[]): T[] {
   return arr;
 }
 
+/** Formatea un número como moneda legible. Ej: 1500 → "$1,500" */
+function formatMoney(amount: number): string {
+  return `$${Number(amount).toLocaleString("es-MX", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
 /**
  * Sube una imagen en base64 a Cloudinary bajo la carpeta "kolekta/batchs".
  * Devuelve { url, publicId }.
@@ -65,7 +79,6 @@ async function uploadImageToCloudinary(
   base64Image: string,
   publicIdPrefix: string,
 ): Promise<{ url: string; publicId: string }> {
-  // base64Image puede venir como "data:image/jpeg;base64,..." o solo la cadena base64
   const dataUri = base64Image.startsWith("data:")
     ? base64Image
     : `data:image/jpeg;base64,${base64Image}`;
@@ -138,11 +151,21 @@ export interface UpdateParticipantDto {
   notes?: string;
 }
 
+export interface ListBatchsFilter {
+  status?: BatchStatus;
+  limit?: number;
+  offset?: number;
+}
+
 // ─── Service ─────────────────────────────────────────────────────────────────
 
 export const BatchService = {
   // ── CRUD Tanda ────────────────────────────────────────────────────────────
 
+  /**
+   * Crea una tanda nueva (con o sin participantes iniciales).
+   * Registra actividad BATCH_CREATED de forma atómica.
+   */
   async createBatch(userId: string, dto: CreateBatchDto): Promise<Batch> {
     const {
       name,
@@ -247,14 +270,51 @@ export const BatchService = {
       await detailRepo.save(details);
     }
 
+    // ── Actividad: tanda creada ───────────────────────────
+    await ActivityService.create({
+      userId,
+      module: ActivityModule.BATCH,
+      type: ActivityType.BATCH_CREATED,
+      title: name,
+      description:
+        participants.length > 0
+          ? `Creaste la tanda "${name}" con ${participants.length} participante(s) de ${totalSlots} lugares`
+          : `Creaste la tanda "${name}" con ${totalSlots} lugares`,
+      amount: entryPrice,
+      referenceId: savedBatch.id,
+      metadata: {
+        totalSlots,
+        frequency,
+        payoutAmount,
+        participantsCount: participants.length,
+      },
+    });
+
     return savedBatch;
   },
 
-  async listBatchsByUser(userId: string): Promise<Batch[]> {
-    return batchRepo.find({
-      where: { userId },
+  async listBatchsByUser(
+    userId: string,
+    options: {
+      status?: BatchStatus;
+      limit?: number;
+      offset?: number;
+    } = {},
+  ): Promise<{ batchs: Batch[]; total: number }> {
+    const { status, limit = 20, offset = 0 } = options;
+
+    const where: any = { userId };
+    if (status) where.status = status;
+
+    const [batchs, total] = await batchRepo.findAndCount({
+      where,
       order: { createdAt: "DESC" },
+      take: limit,
+      skip: offset,
+      // No necesitamos relations aquí (el home screen solo muestra lista básica)
     });
+
+    return { batchs, total };
   },
 
   async getBatchsById(batchId: string, userId: string): Promise<Batch> {
@@ -281,12 +341,10 @@ export const BatchService = {
 
     // ── Manejo de imagen ──────────────────────────────────
     if (data.removeCoverImage && batch.coverImagePublicId) {
-      // Eliminar imagen actual de Cloudinary
       await deleteImageFromCloudinary(batch.coverImagePublicId);
       batch.coverImage = null;
       batch.coverImagePublicId = null;
     } else if (data.coverImageBase64) {
-      // Reemplazar imagen: si ya tiene una, la sobreescribimos con el mismo publicId
       const publicIdPrefix = batch.coverImagePublicId ?? `batch_${batchId}`;
       const uploaded = await uploadImageToCloudinary(
         data.coverImageBase64,
@@ -304,6 +362,10 @@ export const BatchService = {
     return batchRepo.save(batch);
   },
 
+  /**
+   * Cancela una tanda activa.
+   * Registra actividad BATCH_CANCELLED de forma atómica.
+   */
   async cancelBatch(batchId: string, userId: string): Promise<Batch> {
     const batch = await batchRepo.findOne({ where: { id: batchId, userId } });
     if (!batch) throw new Error("Tanda no encontrada");
@@ -311,11 +373,62 @@ export const BatchService = {
       throw new Error("Solo se puede cancelar una tanda activa");
 
     batch.status = BatchStatus.CANCELLED;
-    return batchRepo.save(batch);
+    const saved = await batchRepo.save(batch);
+
+    // ── Actividad: tanda cancelada ────────────────────────
+    await ActivityService.create({
+      userId,
+      module: ActivityModule.BATCH,
+      type: ActivityType.BATCH_CANCELLED,
+      title: batch.name,
+      description: `Cancelaste la tanda "${batch.name}" (turno ${batch.currentTurn}/${batch.totalSlots})`,
+      amount: null,
+      referenceId: batchId,
+      metadata: {
+        currentTurn: batch.currentTurn,
+        totalSlots: batch.totalSlots,
+      },
+    });
+
+    return saved;
+  },
+
+  /**
+   * Elimina una tanda permanentemente.
+   * Registra actividad BATCH_DELETED de forma atómica.
+   */
+  async deleteBatch(batchId: string, userId: string): Promise<Batch> {
+    const batch = await batchRepo.findOne({ where: { id: batchId, userId } });
+    if (!batch) throw new Error("Tanda no encontrada");
+
+    // Guardamos los datos antes de eliminar para la actividad
+    const batchName = batch.name;
+    const batchStatus = batch.status;
+
+    const removed = await batchRepo.remove(batch);
+
+    // ── Actividad: tanda eliminada ────────────────────────
+    // referenceId = null porque el recurso ya no existe
+    await ActivityService.create({
+      userId,
+      module: ActivityModule.BATCH,
+      type: ActivityType.BATCH_DELETED,
+      title: batchName,
+      description: `Eliminaste la tanda "${batchName}"`,
+      amount: null,
+      referenceId: null,
+      metadata: { previousStatus: batchStatus },
+    });
+
+    return removed;
   },
 
   // ── Participantes ─────────────────────────────────────────────────────────
 
+  /**
+   * Agrega un participante a un lugar específico.
+   * Registra actividad BATCH_PARTICIPANT_ADDED de forma atómica.
+   */
   async addParticipant(
     batchId: string,
     userId: string,
@@ -368,7 +481,27 @@ export const BatchService = {
       deliveredAt: null,
     });
 
-    return detailRepo.save(detail);
+    const savedDetail = await detailRepo.save(detail);
+
+    // ── Actividad: participante agregado ──────────────────
+    await ActivityService.create({
+      userId,
+      module: ActivityModule.BATCH,
+      type: ActivityType.BATCH_PARTICIPANT_ADDED,
+      title: batch.name,
+      description: `Agregaste a ${contactName} con el número #${resolvedNumber} a la tanda "${batch.name}"`,
+      amount: null,
+      referenceId: batchId,
+      metadata: {
+        detailId: savedDetail.id,
+        contactName,
+        assignedNumber: resolvedNumber,
+        row,
+        phone: phone ?? null,
+      },
+    });
+
+    return savedDetail;
   },
 
   async updateParticipant(
@@ -395,6 +528,10 @@ export const BatchService = {
     return detailRepo.save(detail);
   },
 
+  /**
+   * Elimina (libera) el lugar de un participante.
+   * Registra actividad BATCH_PARTICIPANT_REMOVED de forma atómica.
+   */
   async removeParticipant(
     detailId: string,
     batchId: string,
@@ -412,11 +549,35 @@ export const BatchService = {
         "No se puede eliminar un participante con entrega realizada",
       );
 
+    const contactName = detail.contactName;
+    const assignedNumber = detail.assignedNumber;
+
     await detailRepo.remove(detail);
+
+    // ── Actividad: participante eliminado ─────────────────
+    await ActivityService.create({
+      userId,
+      module: ActivityModule.BATCH,
+      type: ActivityType.BATCH_PARTICIPANT_REMOVED,
+      title: batch.name,
+      description: `Eliminaste a ${contactName} (número #${assignedNumber}) de la tanda "${batch.name}"`,
+      amount: null,
+      referenceId: batchId,
+      metadata: {
+        contactName,
+        assignedNumber,
+      },
+    });
   },
 
   // ── Entregas ──────────────────────────────────────────────────────────────
 
+  /**
+   * Registra la entrega a un participante específico.
+   * Avanza currentTurn y nextDeliveryDate en la tanda.
+   * Si se completan todos los turnos, marca la tanda como FINISHED.
+   * Registra actividad BATCH_DELIVERY_REGISTERED (y BATCH_FINISHED si aplica) de forma atómica.
+   */
   async registerDelivery(
     batchId: string,
     userId: string,
@@ -442,8 +603,9 @@ export const BatchService = {
     await detailRepo.save(detail);
 
     tanda.currentTurn += 1;
+    const isFinished = tanda.currentTurn >= tanda.totalSlots;
 
-    if (tanda.currentTurn >= tanda.totalSlots) {
+    if (isFinished) {
       tanda.status = BatchStatus.FINISHED;
       tanda.nextDeliveryDate = null;
     } else {
@@ -451,6 +613,40 @@ export const BatchService = {
     }
 
     const savedTanda = await batchRepo.save(tanda);
+
+    // ── Actividad: entrega registrada ─────────────────────
+    await ActivityService.create({
+      userId,
+      module: ActivityModule.BATCH,
+      type: ActivityType.BATCH_DELIVERY_REGISTERED,
+      title: tanda.name,
+      description: `Entregaste el turno #${detail.assignedNumber} a ${detail.contactName} (${formatMoney(Number(detail.payoutAmount))}) en la tanda "${tanda.name}"`,
+      amount: Number(detail.payoutAmount),
+      referenceId: batchId,
+      metadata: {
+        detailId,
+        contactName: detail.contactName,
+        assignedNumber: detail.assignedNumber,
+        turn: tanda.currentTurn,
+        totalSlots: tanda.totalSlots,
+        deliveredAt: detail.deliveredAt,
+      },
+    });
+
+    // ── Actividad extra: tanda finalizada ─────────────────
+    if (isFinished) {
+      await ActivityService.create({
+        userId,
+        module: ActivityModule.BATCH,
+        type: ActivityType.BATCH_FINISHED,
+        title: tanda.name,
+        description: `¡La tanda "${tanda.name}" se completó! Todos los ${tanda.totalSlots} turnos fueron entregados`,
+        amount: null,
+        referenceId: batchId,
+        metadata: { totalSlots: tanda.totalSlots },
+      });
+    }
+
     return { tanda: savedTanda, detail };
   },
 
@@ -541,12 +737,5 @@ export const BatchService = {
     return batchRepo.count({
       where: { userId, status: BatchStatus.ACTIVE },
     });
-  },
-
-  async deleteBatch(batchId: string, userId: string): Promise<Batch> {
-    const batch = await batchRepo.findOne({ where: { id: batchId, userId } });
-    if (!batch) throw new Error("Tanda no encontrada");
-
-    return batchRepo.remove(batch);
   },
 };

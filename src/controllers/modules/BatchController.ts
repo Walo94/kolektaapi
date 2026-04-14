@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { BatchService } from "@/services/modules/BatchService";
-import { BatchFrequency } from "@/entities/modules/batchs/Batch";
+import { BatchFrequency, BatchStatus } from "@/entities/modules/batchs/Batch";
 
 export const BatchController = {
   // ── Tanda CRUD ────────────────────────────────────────────────────────────
@@ -76,8 +76,23 @@ export const BatchController = {
   async listBatchs(req: any, res: Response) {
     try {
       const userId = req.user.id;
-      const batchs = await BatchService.listBatchsByUser(userId);
-      res.json({ batchs });
+      const { status, limit, offset } = req.query;
+
+      // Validación opcional del status
+      const validStatuses = Object.values(BatchStatus);
+      if (status && !validStatuses.includes(status as BatchStatus)) {
+        return res.status(400).json({
+          error: `status debe ser uno de: ${validStatuses.join(", ")}`,
+        });
+      }
+
+      const result = await BatchService.listBatchsByUser(userId, {
+        status: status as BatchStatus | undefined,
+        limit: limit ? Number(limit) : 100,
+        offset: offset ? Number(offset) : 0,
+      });
+
+      res.json(result);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }

@@ -3,6 +3,15 @@ import dotenv from "dotenv";
 import { User } from "@/entities/admin/User";
 import { Batch } from "@/entities/modules/batchs/Batch";
 import { BatchDetail } from "@/entities/modules/batchs/BatchDetail";
+import { Activity } from "@/entities/modules/Activity";
+import { Payment } from "@/entities/modules/catalogs/Payment";
+import { Sale } from "@/entities/modules/catalogs/Sale";
+import { Giveaway } from "@/entities/modules/giveaways/Giveaway";
+import { GiveawayDetail } from "@/entities/modules/giveaways/GiveawayDetail";
+import { GiveawayPrize } from "@/entities/modules/giveaways/GiveawayPrize";
+import { Notification } from "@/entities/modules/notifications/Notification";
+import { NotificationPreference } from "@/entities/modules/notifications/NotificationPreference";
+import { DeviceToken } from "@/entities/modules/notifications/DeviceToken";
 
 dotenv.config();
 
@@ -16,7 +25,20 @@ export const AppDataSource = new DataSource({
   connectorPackage: "mysql2",
   synchronize: true,
   logging: false,
-  entities: [User, Batch, BatchDetail],
+  entities: [
+    Activity,
+    DeviceToken,
+    User,
+    Batch,
+    BatchDetail,
+    Payment,
+    Sale,
+    Giveaway,
+    GiveawayDetail,
+    GiveawayPrize,
+    Notification,
+    NotificationPreference,
+  ],
   extra: {
     connectionLimit: 10,
     waitForConnections: true,
