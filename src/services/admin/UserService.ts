@@ -8,6 +8,12 @@ import crypto from "crypto";
 
 const userRepo = AppDataSource.getRepository(User);
 
+export enum SubscriptionPlan {
+  FREE = "free",
+  TRIAL = "trial",
+  PREMIUM = "premium",
+}
+
 export const UserService = {
   async register(data: any) {
     const { email, password, fullName, userAccount, phone } = data;
@@ -45,7 +51,6 @@ export const UserService = {
       password: hashedPassword,
       fullName,
       phone,
-      userAccount: userAccount || "free",
       emailVerified: false,
       emailVerificationToken: hashedToken,
       emailVerificationExpires: verificationExpiry,
@@ -72,7 +77,6 @@ export const UserService = {
         "password",
         "fullName",
         "phone",
-        "userAccount",
         "emailVerified",
         "phoneVerified",
         "createdAt",
@@ -80,11 +84,9 @@ export const UserService = {
     });
 
     if (!user) throw new Error("Usuario no encontrado");
+    if (!(await bcrypt.compare(password, user.password)))
+      throw new Error("Datos incorrectos");
 
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) throw new Error("Datos incorrectos");
-
-    // Generar Token
     const token = jwt.sign(
       { id: user.id, email: user.email },
       process.env.JWT_SECRET || "default_secret",
@@ -97,7 +99,6 @@ export const UserService = {
         fullName: user.fullName,
         email: user.email,
         phone: user.phone,
-        userAccount: user.userAccount,
         emailVerified: user.emailVerified,
         phoneVerified: user.phoneVerified,
         createdAt: user.createdAt,
@@ -114,7 +115,6 @@ export const UserService = {
         "email",
         "fullName",
         "phone",
-        "userAccount",
         "emailVerified",
         "createdAt",
       ],
@@ -128,7 +128,6 @@ export const UserService = {
         fullName: user.fullName,
         email: user.email,
         phone: user.phone,
-        userAccount: user.userAccount,
         emailVerified: user.emailVerified,
         createdAt: user.createdAt,
       },
@@ -452,51 +451,18 @@ export const UserService = {
     return { message: "Teléfono verificado exitosamente" };
   },
 
-  /**
-   * Completar perfil de Google
-   */
-  async completeGoogleProfile(userId: string, phone: string, fullName: string) {
-    const user = await userRepo.findOne({
-      where: { id: userId },
-      select: ["id", "email", "phone", "fullName", "googleProfileIncomplete"],
-    });
+  async startFreeTrial(userId: string) {
+    const user = await userRepo.findOne({ where: { id: userId } });
+    if (!user) throw new Error("Usuario no encontrado");
 
-    if (!user) {
-      throw new Error("Usuario no encontrado");
+    if (user.trialEndsAt && user.trialEndsAt > new Date()) {
+      throw new Error("Ya tienes un trial activo");
     }
 
-    // Verificar que el usuario necesite completar su perfil
-    if (user.phone && !user.googleProfileIncomplete) {
-      throw new Error("El perfil ya está completo");
-    }
-
-    // Validar que el correo o teléfono no existan
-    const existingUser = await userRepo.findOne({
-      where: [{ phone }],
-    });
-
-    if (existingUser) {
-      if (existingUser.phone === phone) {
-        throw new Error("El número de teléfono ya está registrado");
-      }
-    }
-
-    // Actualizar usuario
-    user.phone = phone;
-    user.fullName = fullName;
-    user.googleProfileIncomplete = false;
-    user.emailVerified = true;
-
+    user.subscriptionPlan = SubscriptionPlan.TRIAL;
+    user.trialEndsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 días
     await userRepo.save(user);
 
-    return {
-      message: "Perfil completado exitosamente",
-      user: {
-        id: user.id,
-        email: user.email,
-        phone: user.phone,
-        fullName: user.fullName,
-      },
-    };
+    return { message: "Prueba gratis de 7 días activada" };
   },
 };

@@ -8,6 +8,7 @@ import {
   BatchDetail,
   BatchDetailStatus,
 } from "@/entities/modules/batchs/BatchDetail";
+import { User } from "@/entities/admin/User";
 import { ActivityService } from "@/services/modules/ActivityService";
 import { ActivityModule, ActivityType } from "@/entities/modules/Activity";
 import cloudinary from "@/config/cloudinary.config";
@@ -15,6 +16,13 @@ import crypto from "crypto";
 
 const batchRepo = AppDataSource.getRepository(Batch);
 const detailRepo = AppDataSource.getRepository(BatchDetail);
+const userRepo = AppDataSource.getRepository(User);
+
+export enum SubscriptionPlan {
+  FREE = "free",
+  TRIAL = "trial",
+  PREMIUM = "premium",
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 

@@ -7,6 +7,7 @@ import {
   GiveawayDetail,
   TicketStatus,
 } from "@/entities/modules/giveaways/GiveawayDetail";
+import { User } from "@/entities/admin/User";
 import { GiveawayPrize } from "@/entities/modules/giveaways/GiveawayPrize";
 import { ActivityService } from "@/services/modules/ActivityService";
 import { ActivityModule, ActivityType } from "@/entities/modules/Activity";
@@ -19,6 +20,13 @@ import crypto from "crypto";
 const giveawayRepo = AppDataSource.getRepository(Giveaway);
 const detailRepo = AppDataSource.getRepository(GiveawayDetail);
 const prizeRepo = AppDataSource.getRepository(GiveawayPrize);
+const userRepo = AppDataSource.getRepository(User);
+
+export enum SubscriptionPlan {
+  FREE = "free",
+  TRIAL = "trial",
+  PREMIUM = "premium",
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 

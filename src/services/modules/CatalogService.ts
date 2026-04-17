@@ -1,5 +1,3 @@
-// src/services/modules/CatalogService.ts
-
 import { AppDataSource } from "@/config/data-source";
 import { Sale, SaleStatus } from "@/entities/modules/catalogs/Sale";
 import { Payment, PaymentStatus } from "@/entities/modules/catalogs/Payment";

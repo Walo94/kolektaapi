@@ -6,11 +6,6 @@ import {
   UpdateDateColumn,
 } from "typeorm";
 
-export enum TypeAccount {
-  FREE = "free",
-  PREMIUM = "premium",
-}
-
 @Entity("users")
 export class User {
   @PrimaryGeneratedColumn("uuid")
@@ -37,12 +32,11 @@ export class User {
   @Column({ type: "varchar", length: 255, select: false })
   password!: string;
 
-  @Column({
-    type: "enum",
-    enum: TypeAccount,
-    default: TypeAccount.FREE,
-  })
-  userAccount!: TypeAccount;
+  @Column({ type: "varchar", length: 255, nullable: true })
+  stripeCustomerId!: string | null;
+
+  @Column({ type: "varchar", length: 255, nullable: true })
+  purchaseId!: string | null;
 
   @Column({ type: "boolean", default: false })
   twoFactorEnabled!: boolean;
@@ -80,15 +74,6 @@ export class User {
   // Intentos fallidos para proteger de fuerza bruta
   @Column({ type: "int", default: 0 })
   phoneVerificationAttempts!: number;
-
-  @Column({ type: "varchar", length: 255, nullable: true })
-  googleId!: string | null;
-
-  @Column({ type: "varchar", length: 255, nullable: true })
-  profilePicture!: string | null;
-
-  @Column({ type: "boolean", default: false })
-  googleProfileIncomplete!: boolean;
 
   @CreateDateColumn()
   createdAt!: Date;

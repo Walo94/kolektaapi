@@ -1,6 +1,5 @@
 import { Request, Response } from "express";
 import { UserService } from "@/services/admin/UserService";
-import { GoogleAuthService } from "@/services/admin/GoogleAuthService";
 
 export const UserController = {
   async register(req: Request, res: Response) {
@@ -48,17 +47,32 @@ export const UserController = {
     }
   },
 
-  async refreshUserInfo(req: Request, res: Response) {
+  async startFreeTrial(req: any, res: Response) {
     try {
-      const { id } = req.body;
+      const userId = req.user.id;
 
-      if (!id) {
-        return res.status(400).json({ message: "Id no encontrado!" });
+      if (!userId) {
+        return res.status(400).json({ error: "El usuario es requerido" });
       }
 
-      const result = await UserService.refreshUserInfo(id);
+      const result = await UserService.startFreeTrial(userId);
       res.json(result);
-    } catch (error) {
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  },
+
+  async refreshUserInfo(req: any, res: Response) {
+    try {
+      const userId = req.user.id;
+
+      if (!userId) {
+        return res.status(400).json({ message: "Id de usuario no encontrado" });
+      }
+
+      const result = await UserService.refreshUserInfo(userId);
+      res.json(result);
+    } catch (error: any) {
       res.status(401).json({ error: error.message });
     }
   },
@@ -208,80 +222,6 @@ export const UserController = {
       }
 
       const result = await UserService.verifyPhoneCode(userId, code);
-      res.json(result);
-    } catch (error: any) {
-      res.status(400).json({ error: error.message });
-    }
-  },
-
-  /**
-   * POST /google/mobile
-   * Recibe el idToken generado por google_sign_in en Flutter,
-   * lo verifica con Google y devuelve un JWT propio + datos del usuario.
-   *
-   * Body: { idToken: string }
-   *
-   * Respuesta si el perfil está incompleto (falta teléfono):
-   *   { requiresProfile: true, token, user }
-   *
-   * Respuesta si el perfil está completo:
-   *   { token, user }
-   */
-  async googleMobileAuth(req: Request, res: Response) {
-    try {
-      const { idToken } = req.body;
-
-      if (!idToken) {
-        return res.status(400).json({ error: "idToken es requerido" });
-      }
-
-      // 1. Verificar el token con Google
-      const payload = await GoogleAuthService.verifyMobileIdToken(idToken);
-
-      // 2. Buscar / crear usuario en BD
-      const user = await GoogleAuthService.findOrCreateFromPayload(payload);
-
-      // 3. Generar JWT propio
-      const result = GoogleAuthService.generateToken(user);
-
-      // 4. Indicar si aún necesita completar su perfil (teléfono)
-      if (user.googleProfileIncomplete) {
-        return res.json({
-          requiresProfile: true,
-          ...result,
-        });
-      }
-
-      res.json(result);
-    } catch (error: any) {
-      console.error("Google mobile auth error:", error);
-      res.status(401).json({ error: "Autenticación con Google fallida" });
-    }
-  },
-
-  async completeGoogleProfile(req: any, res: Response) {
-    try {
-      const { phone, fullName } = req.body;
-      const userId = req.user.id;
-
-      if (!phone || !fullName) {
-        return res
-          .status(400)
-          .json({ error: "Teléfono y nombre completo son requeridos" });
-      }
-
-      if (phone.trim().length < 10) {
-        return res
-          .status(400)
-          .json({ error: "El teléfono de usuario debe tener 10 caracteres" });
-      }
-
-      const result = await UserService.completeGoogleProfile(
-        userId,
-        phone.trim(),
-        fullName.trim(),
-      );
-
       res.json(result);
     } catch (error: any) {
       res.status(400).json({ error: error.message });

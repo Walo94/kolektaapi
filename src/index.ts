@@ -2,7 +2,7 @@ import express from "express";
 import { createServer } from "http";
 import { AppDataSource } from "@/config/data-source.js";
 import * as admin from "firebase-admin";
-import serviceAccount from "@/config/firebase-service-account.json";
+import serviceAccount from "@/config/firebase-service-account.json.json";
 import cors from "cors";
 
 // Importación de Controladores y Rutas
@@ -16,6 +16,7 @@ import GiveawaySharedRoute from "@/routes/modules/GiveawaySharedRoute";
 import { GiveawayAutoDrawService } from "@/services/modules/GiveawayAutoDrawService";
 import NotificationRoute from "@/routes/modules/NotificationRoute";
 import { NotificationScheduler } from "@/services/modules/NotificationScheduler";
+import StripeRoute from "@/routes/admin/StripeRoute";
 
 const app = express();
 const httpServer = createServer(app);
@@ -33,6 +34,7 @@ process.on("SIGTERM", () => {
 process.on("SIGINT", () => {
   console.log("SIGINT recibido, cerrando servidor...");
   GiveawayAutoDrawService.stop();
+  NotificationScheduler.stop();
   httpServer.close(() => {
     console.log("Servidor cerrado");
     process.exit(0);
@@ -63,8 +65,19 @@ app.use(
   }),
 );
 
+//El webhook de Stripe necesita el body RAW (antes de express.json)
+// Se registra ANTES del JSON parser global
+app.use(
+  "/kolekta-api/subscription/webhook",
+  express.raw({ type: "application/json" }),
+);
+
+// ── JSON parser global (para todas las demás rutas) ───────────────
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+
+// ── STRIPE (checkout, portal, transactions, webhook) ─────────────
+app.use("/kolekta-api/subscription", StripeRoute);
 
 // ── RUTAS PÚBLICAS (sin auth) ─────────────────────────────────────
 app.use("/kolekta-api/modules", BatchSharedRoute);
