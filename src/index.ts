@@ -1,5 +1,6 @@
 import express from "express";
 import { createServer } from "http";
+import { Server as SocketIOServer } from "socket.io";
 import { AppDataSource } from "@/config/data-source.js";
 import * as admin from "firebase-admin";
 import serviceAccount from "@/config/firebase-service-account.json.json";
@@ -13,18 +14,40 @@ import ActivityRoute from "@/routes/modules/ActivityRoute";
 import CatalogRoute from "@/routes/modules/CatalogRoute";
 import GiveawayRoute from "@/routes/modules/GiveawayRoute";
 import GiveawaySharedRoute from "@/routes/modules/GiveawaySharedRoute";
-import { GiveawayAutoDrawService } from "@/services/modules/GiveawayAutoDrawService";
+import { GiveawayAutoDrawService } from "@/services/modules/giveaways/GiveawayAutoDrawService";
 import NotificationRoute from "@/routes/modules/NotificationRoute";
-import { NotificationScheduler } from "@/services/modules/NotificationScheduler";
+import { NotificationScheduler } from "@/services/modules/notifications/NotificationScheduler";
 import StripeRoute from "@/routes/admin/StripeRoute";
+import { initGiveawaySocket } from "@/services/modules/giveaways/GiveawaySocketService";
 
 const app = express();
 const httpServer = createServer(app);
+
+// ── Socket.IO (misma instancia HTTP, sin puerto extra) ─────────────────────
+const allowedOriginsList = [
+  "http://localhost:8080",
+  "http://192.168.70.108:8080",
+  "https://kolekta.gamezdev.com.mx",
+];
+
+const io = new SocketIOServer(httpServer, {
+  cors: {
+    origin: allowedOriginsList,
+    methods: ["GET", "POST"],
+    credentials: true,
+  },
+  // Ruta del endpoint de WS: /kolekta-ws
+  // El cliente conecta con: io("https://api.tudominio.com", { path: "/kolekta-ws" })
+  path: "/kolekta-ws",
+});
+
+initGiveawaySocket(io);
 
 process.on("SIGTERM", () => {
   console.log("SIGTERM recibido, cerrando servidor...");
   GiveawayAutoDrawService.stop();
   NotificationScheduler.stop();
+  io.close();
   httpServer.close(() => {
     console.log("Servidor cerrado");
     process.exit(0);
@@ -35,17 +58,14 @@ process.on("SIGINT", () => {
   console.log("SIGINT recibido, cerrando servidor...");
   GiveawayAutoDrawService.stop();
   NotificationScheduler.stop();
+  io.close();
   httpServer.close(() => {
     console.log("Servidor cerrado");
     process.exit(0);
   });
 });
 
-const allowedOrigins = [
-  "http://localhost:8080",
-  "http://192.168.70.108:8080",
-  "https://kolekta.gamezdev.com.mx",
-];
+const allowedOrigins = allowedOriginsList;
 
 app.use(
   cors({

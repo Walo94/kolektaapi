@@ -26,11 +26,24 @@ function buildText(
         body: `${data.clientName}${data.clientPhone ? ` · ${data.clientPhone}` : ""} reservó el número ${data.ticketNumber}.`,
       };
 
-    case NotificationType.GIVEAWAY_AUTO_DRAW_DONE:
+    case NotificationType.GIVEAWAY_AUTO_DRAW_DONE: {
+      const winners = Array.isArray(data.winners) ? data.winners : [];
+
+      const winnersText =
+        winners.length > 0
+          ? winners
+              .map(
+                (w: any) =>
+                  `${w.prizePlace}° ${w.prizeDescription}: ${w.clientName} (boleto #${w.ticketNumber})`,
+              )
+              .join("\n")
+          : "Sin ganadores registrados";
+
       return {
-        title: `Sorteo automático realizado: "${data.giveawayTitle}"`,
-        body: `Se seleccionaron ${data.winnersCount} ganador(es) automáticamente.`,
+        title: `Sorteo realizado: "${data.giveawayTitle}"`,
+        body: `Ganadores:\n${winnersText}`,
       };
+    }
 
     case NotificationType.GIVEAWAY_DRAW_REMINDER:
       return {

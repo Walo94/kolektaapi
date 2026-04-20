@@ -1,7 +1,7 @@
 // src/controllers/modules/GiveawayController.ts
 
 import { Request, Response } from "express";
-import { GiveawayService } from "@/services/modules/GiveawayService";
+import { GiveawayService } from "@/services/modules/giveaways/GiveawayService";
 import { GiveawayStatus } from "@/entities/modules/giveaways/Giveaway";
 
 export const GiveawayController = {

@@ -11,16 +11,21 @@ import { User } from "@/entities/admin/User";
 import { GiveawayPrize } from "@/entities/modules/giveaways/GiveawayPrize";
 import { ActivityService } from "@/services/modules/ActivityService";
 import { ActivityModule, ActivityType } from "@/entities/modules/Activity";
-import { getActiveHoldForPublic } from "@/services/modules/GiveawayHoldService";
-import { NotificationService } from "@/services/modules/NotificationService";
+import { getActiveHoldForPublic } from "@/services/modules/giveaways/GiveawayHoldService";
+import { NotificationService } from "@/services/modules/notifications/NotificationService";
 import { NotificationType } from "@/entities/modules/notifications/Notification";
+import {
+  emitTicketReserved,
+  emitTicketUpdated,
+  emitGiveawayFinished,
+  emitGiveawayCancelled,
+} from "@/services/modules/giveaways/GiveawaySocketService";
 import cloudinary from "@/config/cloudinary.config";
 import crypto from "crypto";
 
 const giveawayRepo = AppDataSource.getRepository(Giveaway);
 const detailRepo = AppDataSource.getRepository(GiveawayDetail);
 const prizeRepo = AppDataSource.getRepository(GiveawayPrize);
-const userRepo = AppDataSource.getRepository(User);
 
 export enum SubscriptionPlan {
   FREE = "free",
@@ -448,44 +453,35 @@ export const GiveawayService = {
 
   // ── Cancelar rifa ─────────────────────────────────────────────────────────
 
-  async cancelGiveaway(id: string, userId: string): Promise<Giveaway> {
+  async cancelGiveaway(giveawayId: string, userId: string): Promise<Giveaway> {
     const giveaway = await giveawayRepo.findOne({
-      where: { id, userId },
-      relations: ["details"],
+      where: { id: giveawayId, userId },
     });
     if (!giveaway) throw new Error("Rifa no encontrada");
-
-    if (giveaway.status === GiveawayStatus.FINISHED)
-      throw new Error("No se puede cancelar una rifa que ya fue sorteada");
-    if (giveaway.status === GiveawayStatus.CANCELLED)
-      throw new Error("La rifa ya está cancelada");
-
-    const nonFree = giveaway.details.filter(
-      (d) => d.status !== TicketStatus.FREE,
-    );
-    for (const d of nonFree) {
-      d.status = TicketStatus.CANCELLED;
-    }
-    if (nonFree.length > 0) await detailRepo.save(nonFree);
+    if (giveaway.status !== GiveawayStatus.OPEN)
+      throw new Error("Solo se pueden cancelar rifas abiertas");
 
     giveaway.status = GiveawayStatus.CANCELLED;
-    const cancelled = await giveawayRepo.save(giveaway);
+    const saved = await giveawayRepo.save(giveaway);
+
+    // ── Notificar en tiempo real ──────────────────────────────────────────
+    try {
+      emitGiveawayCancelled(giveaway.publicToken);
+    } catch (_) {}
+    // ────────────────────────────────────────────────────────────────────────
 
     await ActivityService.create({
       userId,
       module: ActivityModule.GIVEAWAY,
       type: ActivityType.GIVEAWAY_CANCELLED,
       title: giveaway.title,
-      description: `Rifa "${giveaway.title}" cancelada (${nonFree.length} boleto(s) liberado(s))`,
+      description: `Rifa "${giveaway.title}" cancelada`,
       amount: null,
-      referenceId: id,
-      metadata: {
-        totalTickets: giveaway.totalTickets,
-        soldTickets: giveaway.soldTickets,
-      },
+      referenceId: giveawayId,
+      metadata: {},
     });
 
-    return cancelled;
+    return saved;
   },
 
   // ── Eliminar rifa ─────────────────────────────────────────────────────────
@@ -775,6 +771,11 @@ export const GiveawayService = {
     giveaway.autoDrawExecuted = true;
     await giveawayRepo.save(giveaway);
 
+    // ── Notificar en tiempo real ──────────────────────────────────────────
+    try {
+      emitGiveawayFinished(giveaway.publicToken);
+    } catch (_) {}
+
     const winnersText = updatedWinners
       .map(
         (w) =>
@@ -896,6 +897,16 @@ export const GiveawayService = {
     detail.soldAt = new Date();
 
     const saved = await detailRepo.save(detail);
+
+    // ── 🆕 Notificar en tiempo real ──────────────────────────────────────────
+    try {
+      emitTicketReserved(publicToken, {
+        ticketNumber,
+        clientName: clientName.trim(),
+        status: "reserved",
+      });
+    } catch (_) {}
+    // ────────────────────────────────────────────────────────────────────────
 
     await NotificationService.create(
       giveaway.userId,

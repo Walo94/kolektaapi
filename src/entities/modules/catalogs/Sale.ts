@@ -1,4 +1,9 @@
-// src/entities/modules/Sale.ts
+// src/entities/modules/catalogs/Sale.ts
+// CAMBIOS respecto a la versión anterior:
+//  - Se agrega la relación OneToMany con SaleItem (items)
+//  - totalAmount ahora es calculado desde los items (el servicio lo recalcula)
+//  - Se elimina el campo `description` de nivel superior (la descripción
+//    ahora vive en cada SaleItem); se mantiene `title` como resumen.
 
 import {
   Entity,
@@ -13,6 +18,7 @@ import {
 } from "typeorm";
 import { User } from "@/entities/admin/User";
 import { Payment } from "@/entities/modules/catalogs/Payment";
+import { SaleItem } from "@/entities/modules/catalogs/SaleItem";
 
 export enum SaleStatus {
   PENDING = "pending", // Pendiente — tiene saldo por cobrar
@@ -36,10 +42,6 @@ export class Sale {
   user!: User;
 
   // ── Número de orden (legible por el usuario) ──────────────────────────────
-  /**
-   * Número de orden auto-generado dentro del contexto del usuario.
-   * Ej: 1, 2, 3 … Se calcula en el servicio al crear.
-   */
   @Column({ type: "int", unsigned: true })
   orderNum!: number;
 
@@ -50,29 +52,24 @@ export class Sale {
   @Column({ type: "varchar", length: 20, nullable: true })
   clientPhone!: string | null;
 
-  // ── Descripción de la venta ───────────────────────────────────────────────
+  // ── Título de la venta ────────────────────────────────────────────────────
   /** Título corto. Ej: "Catálogo Andrea" */
   @Column({ type: "varchar", length: 150 })
   title!: string;
 
-  /** Detalle de lo vendido. Ej: "2 pares zapatos talla 26 + bolsa" */
-  @Column({ type: "varchar", length: 500 })
-  description!: string;
-
   // ── Montos ────────────────────────────────────────────────────────────────
   /**
-   * Monto total original de la venta.
-   * Solo editable mientras no existan pagos registrados.
+   * Suma de subtotales de todos los SaleItems.
+   * Se recalcula cada vez que se agregan / editan / eliminan ítems.
    */
-  @Column({ type: "decimal", precision: 10, scale: 2 })
+  @Column({ type: "decimal", precision: 10, scale: 2, default: 0 })
   totalAmount!: number;
 
   /**
    * Saldo pendiente de cobro.
    * Inicia igual a totalAmount y se reduce con cada pago.
-   * Cuando llega a 0 el status cambia automáticamente a PAID.
    */
-  @Column({ type: "decimal", precision: 10, scale: 2 })
+  @Column({ type: "decimal", precision: 10, scale: 2, default: 0 })
   balance!: number;
 
   // ── Fecha acordada de la venta ────────────────────────────────────────────
@@ -83,7 +80,10 @@ export class Sale {
   @Column({ type: "enum", enum: SaleStatus, default: SaleStatus.PENDING })
   status!: SaleStatus;
 
-  // ── Relación con pagos ────────────────────────────────────────────────────
+  // ── Relaciones ────────────────────────────────────────────────────────────
+  @OneToMany(() => SaleItem, (i) => i.sale, { cascade: true })
+  items!: SaleItem[];
+
   @OneToMany(() => Payment, (p) => p.sale, { cascade: true })
   payments!: Payment[];
 

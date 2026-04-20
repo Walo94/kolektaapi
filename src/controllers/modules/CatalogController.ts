@@ -1,7 +1,5 @@
-// src/controllers/modules/CatalogController.ts
-
 import { Response } from "express";
-import { CatalogService } from "@/services/modules/CatalogService";
+import { CatalogService } from "@/services/modules/catalogs/CatalogService";
 import { SaleStatus } from "@/entities/modules/catalogs/Sale";
 
 export const CatalogController = {
@@ -11,25 +9,25 @@ export const CatalogController = {
 
   /**
    * POST /catalog/sales
-   * Body: { clientName, clientPhone?, title, description, totalAmount, date }
+   * Body: {
+   *   clientName, clientPhone?, title, date,
+   *   items: [{ productId?, description?, price?, quantity }]
+   * }
    */
   async createSale(req: any, res: Response) {
     try {
       const userId = req.user.id;
-      const { clientName, clientPhone, title, description, totalAmount, date } =
-        req.body;
+      const { clientName, clientPhone, title, date, items } = req.body;
 
-      if (!clientName || !title || !description || !totalAmount || !date) {
+      if (!clientName || !title || !date) {
         return res.status(400).json({
-          error:
-            "Faltan campos requeridos: clientName, title, description, totalAmount, date",
+          error: "Faltan campos requeridos: clientName, title, date",
         });
       }
-
-      if (isNaN(Number(totalAmount)) || Number(totalAmount) <= 0) {
-        return res
-          .status(400)
-          .json({ error: "totalAmount debe ser un número mayor a 0" });
+      if (!Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({
+          error: "La venta debe incluir al menos un ítem en el campo `items`",
+        });
       }
 
       const sale = await CatalogService.createSale({
@@ -37,9 +35,8 @@ export const CatalogController = {
         clientName,
         clientPhone: clientPhone ?? null,
         title,
-        description,
-        totalAmount: Number(totalAmount),
         date,
+        items,
       });
 
       res.status(201).json({ sale });
@@ -76,9 +73,7 @@ export const CatalogController = {
     }
   },
 
-  /**
-   * GET /catalog/sales/:id
-   */
+  /** GET /catalog/sales/:id */
   async getSale(req: any, res: Response) {
     try {
       const sale = await CatalogService.getSaleById(req.params.id, req.user.id);
@@ -90,27 +85,32 @@ export const CatalogController = {
 
   /**
    * PATCH /catalog/sales/:id
-   * Body: { title?, description?, clientPhone?, totalAmount? }
+   * Body: {
+   *   title?, clientPhone?,
+   *   items?: [{ productId?, description?, price?, quantity }]
+   * }
+   * Solo se puede editar mientras no haya pagos activos.
+   * Si se envía `items`, se reemplazan todos los productos de la venta
+   * y se recalcula totalAmount.
    */
   async updateSale(req: any, res: Response) {
     try {
-      const { title, description, clientPhone, totalAmount } = req.body;
+      const { title, clientPhone, items } = req.body;
 
       if (
-        totalAmount !== undefined &&
-        (isNaN(Number(totalAmount)) || Number(totalAmount) <= 0)
+        items !== undefined &&
+        (!Array.isArray(items) || items.length === 0)
       ) {
-        return res
-          .status(400)
-          .json({ error: "totalAmount debe ser un número mayor a 0" });
+        return res.status(400).json({
+          error:
+            "Si envías `items`, debe ser un arreglo con al menos un elemento",
+        });
       }
 
       const sale = await CatalogService.updateSale(req.params.id, req.user.id, {
         title,
-        description,
         clientPhone,
-        totalAmount:
-          totalAmount !== undefined ? Number(totalAmount) : undefined,
+        items,
       });
 
       res.json({ sale });
@@ -119,9 +119,7 @@ export const CatalogController = {
     }
   },
 
-  /**
-   * PATCH /catalog/sales/:id/cancel
-   */
+  /** PATCH /catalog/sales/:id/cancel */
   async cancelSale(req: any, res: Response) {
     try {
       const sale = await CatalogService.cancelSale(req.params.id, req.user.id);
@@ -131,9 +129,7 @@ export const CatalogController = {
     }
   },
 
-  /**
-   * DELETE /catalog/sales/:id
-   */
+  /** DELETE /catalog/sales/:id */
   async deleteSale(req: any, res: Response) {
     try {
       await CatalogService.deleteSale(req.params.id, req.user.id);
@@ -144,13 +140,10 @@ export const CatalogController = {
   },
 
   // ══════════════════════════════════════════════════════════════════════════
-  // PAGOS
+  // PAGOS  (sin cambios)
   // ══════════════════════════════════════════════════════════════════════════
 
-  /**
-   * POST /catalog/sales/:saleId/payments
-   * Body: { amount, date }
-   */
+  /** POST /catalog/sales/:saleId/payments */
   async createPayment(req: any, res: Response) {
     try {
       const userId = req.user.id;
@@ -179,9 +172,7 @@ export const CatalogController = {
     }
   },
 
-  /**
-   * GET /catalog/sales/:saleId/payments
-   */
+  /** GET /catalog/sales/:saleId/payments */
   async listPayments(req: any, res: Response) {
     try {
       const payments = await CatalogService.listPayments(
@@ -194,9 +185,7 @@ export const CatalogController = {
     }
   },
 
-  /**
-   * PATCH /catalog/payments/:id/cancel
-   */
+  /** PATCH /catalog/payments/:id/cancel */
   async cancelPayment(req: any, res: Response) {
     try {
       const result = await CatalogService.cancelPayment(
@@ -209,9 +198,7 @@ export const CatalogController = {
     }
   },
 
-  /**
-   * DELETE /catalog/payments/:id
-   */
+  /** DELETE /catalog/payments/:id */
   async deletePayment(req: any, res: Response) {
     try {
       const result = await CatalogService.deletePayment(

@@ -5,8 +5,8 @@ import {
   Giveaway,
   GiveawayStatus,
 } from "@/entities/modules/giveaways/Giveaway";
-import { GiveawayService } from "@/services/modules/GiveawayService";
-import { NotificationService } from "@/services/modules/NotificationService";
+import { GiveawayService } from "@/services/modules/giveaways/GiveawayService";
+import { NotificationService } from "@/services/modules/notifications/NotificationService";
 import { NotificationType } from "@/entities/modules/notifications/Notification";
 
 const POLL_INTERVAL_MS = 60_000;
@@ -93,12 +93,37 @@ export const GiveawayAutoDrawService = {
 
         await GiveawayService.drawWinnersRandom(giveaway.id, giveaway.userId);
 
+        // Obtener los ganadores después del sorteo
+        const giveawayRepo = AppDataSource.getRepository(Giveaway);
+
+        const giveawayWithDetails = await giveawayRepo.findOne({
+          where: { id: giveaway.id },
+          relations: ["details", "prizes"],
+        });
+
+        const winners = (giveawayWithDetails?.details ?? [])
+          .filter((d) => d.status === "winner")
+          .sort((a, b) => (a.prizePlace ?? 0) - (b.prizePlace ?? 0))
+          .map((d) => {
+            const prize = giveawayWithDetails?.prizes?.find(
+              (p) => p.prizePlace === d.prizePlace,
+            );
+            return {
+              clientName: d.clientName ?? "Sin nombre",
+              ticketNumber: d.ticketNumber,
+              prizePlace: d.prizePlace,
+              prizeDescription: prize?.description ?? `Premio ${d.prizePlace}`,
+            };
+          });
+
         await NotificationService.create(
           giveaway.userId,
           NotificationType.GIVEAWAY_AUTO_DRAW_DONE,
           {
             giveawayId: giveaway.id,
             giveawayTitle: giveaway.title,
+            winnersCount: winners.length,
+            winners,
           },
         );
 

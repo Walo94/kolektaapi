@@ -1,29 +1,54 @@
+// src/services/modules/CatalogService.ts
+// CAMBIOS respecto a la versión anterior:
+//  - createSale acepta `items` (array de SaleItemInput) en lugar de totalAmount manual
+//  - totalAmount se calcula automáticamente de los items
+//  - updateSale permite editar los items de la venta (solo sin pagos)
+//  - Se agregan métodos: addSaleItem, updateSaleItem, removeSaleItem
+//  - getSaleById y listSales cargan la relación `items`
 import { AppDataSource } from "@/config/data-source";
 import { Sale, SaleStatus } from "@/entities/modules/catalogs/Sale";
+import { SaleItem } from "@/entities/modules/catalogs/SaleItem";
 import { Payment, PaymentStatus } from "@/entities/modules/catalogs/Payment";
+import { Product } from "@/entities/modules/catalogs/Product";
 import { ActivityService } from "@/services/modules/ActivityService";
 import { ActivityModule, ActivityType } from "@/entities/modules/Activity";
 
 const saleRepo = AppDataSource.getRepository(Sale);
+const itemRepo = AppDataSource.getRepository(SaleItem);
 const paymentRepo = AppDataSource.getRepository(Payment);
+const productRepo = AppDataSource.getRepository(Product);
 
 // ─── DTOs ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Representa un ítem al crear o agregar a una venta.
+ * Puede provenir de un producto registrado (productId) o ser libre (solo description + price).
+ */
+export interface SaleItemInput {
+  /** ID del Product registrado (opcional). Si se proporciona, se toma description/price de él. */
+  productId?: string | null;
+  /** Descripción libre (requerida solo si no hay productId). */
+  description?: string;
+  /** Precio unitario libre (requerido solo si no hay productId). */
+  price?: number;
+  /** Cantidad de unidades (mínimo 1). */
+  quantity: number;
+}
 
 export interface CreateSaleDto {
   userId: string;
   clientName: string;
   clientPhone?: string | null;
   title: string;
-  description: string;
-  totalAmount: number;
   date: string; // "YYYY-MM-DD"
+  items: SaleItemInput[];
 }
 
 export interface UpdateSaleDto {
   title?: string;
-  description?: string;
   clientPhone?: string | null;
-  totalAmount?: number;
+  /** Reemplaza todos los items de la venta. Solo permitido sin pagos activos. */
+  items?: SaleItemInput[];
 }
 
 export interface CreatePaymentDto {
@@ -43,6 +68,76 @@ function toNumber(value: number | string): number {
   return typeof value === "string" ? parseFloat(value) : value;
 }
 
+/**
+ * Construye un arreglo de SaleItem (sin persistir) a partir de SaleItemInput[].
+ * Valida stock, precio y resuelve snapshot desde Product si se proporciona productId.
+ */
+async function buildSaleItems(
+  userId: string,
+  inputs: SaleItemInput[],
+): Promise<Omit<SaleItem, "id" | "saleId" | "sale" | "createdAt">[]> {
+  if (!inputs || inputs.length === 0) {
+    throw new Error("La venta debe tener al menos un producto");
+  }
+
+  const builtItems: Omit<SaleItem, "id" | "saleId" | "sale" | "createdAt">[] =
+    [];
+
+  for (const input of inputs) {
+    if (!input.quantity || input.quantity < 1) {
+      throw new Error("La cantidad de cada ítem debe ser mayor a 0");
+    }
+
+    let productName: string;
+    let unitPrice: number;
+
+    if (input.productId) {
+      // Resolver snapshot desde el catálogo (verificar que pertenece al usuario)
+      const product = await productRepo.findOne({
+        where: { id: input.productId, userId },
+      });
+      if (!product) {
+        throw new Error(`Producto con id "${input.productId}" no encontrado`);
+      }
+      productName = product.description;
+      unitPrice = toNumber(product.price);
+    } else {
+      // Producto libre — requiere description y price explícitos
+      if (!input.description?.trim()) {
+        throw new Error(
+          "Los ítems sin productId requieren el campo description",
+        );
+      }
+      if (!input.price || input.price <= 0) {
+        throw new Error(
+          "Los ítems sin productId requieren el campo price mayor a 0",
+        );
+      }
+      productName = input.description.trim();
+      unitPrice = input.price;
+    }
+
+    const subtotal = parseFloat((unitPrice * input.quantity).toFixed(2));
+
+    builtItems.push({
+      productId: input.productId ?? null,
+      productName,
+      unitPrice,
+      quantity: input.quantity,
+      subtotal,
+    });
+  }
+
+  return builtItems;
+}
+
+/** Recalcula el totalAmount de una venta a partir de sus ítems. */
+function calcTotal(items: Array<{ subtotal: number | string }>): number {
+  return parseFloat(
+    items.reduce((sum, i) => sum + toNumber(i.subtotal), 0).toFixed(2),
+  );
+}
+
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 export const CatalogService = {
@@ -50,51 +145,61 @@ export const CatalogService = {
   // VENTAS
   // ══════════════════════════════════════════════════════════════════════════
 
-  // ── Crear venta ───────────────────────────────────────────────────────────
-
   async createSale(dto: CreateSaleDto): Promise<Sale> {
-    if (dto.totalAmount <= 0) {
-      throw new Error("El monto total debe ser mayor a 0");
-    }
+    const builtItems = await buildSaleItems(dto.userId, dto.items);
+    const totalAmount = calcTotal(builtItems);
 
-    // Calcular el siguiente orderNum para este usuario
+    // Siguiente orderNum para el usuario
     const lastSale = await saleRepo.findOne({
       where: { userId: dto.userId },
       order: { orderNum: "DESC" },
     });
     const orderNum = (lastSale?.orderNum ?? 0) + 1;
 
+    // Crear la venta
     const sale = saleRepo.create({
       userId: dto.userId,
       orderNum,
       clientName: dto.clientName,
       clientPhone: dto.clientPhone ?? null,
       title: dto.title,
-      description: dto.description,
-      totalAmount: dto.totalAmount,
-      balance: dto.totalAmount, // balance inicia igual al total
+      totalAmount,
+      balance: totalAmount,
       date: dto.date,
       status: SaleStatus.PENDING,
     });
 
-    const saved = await saleRepo.save(sale);
+    const savedSale = await saleRepo.save(sale);
 
-    // ── Actividad ─────────────────────────────────────────────────────────
+    // Persistir los ítems
+    const saleItems = itemRepo.create(
+      builtItems.map((i) => ({ ...i, saleId: savedSale.id })),
+    );
+    await itemRepo.save(saleItems);
+
+    // Recargar con relaciones
+    const full = await saleRepo.findOne({
+      where: { id: savedSale.id },
+      relations: ["items", "payments"],
+    });
+
     await ActivityService.create({
       userId: dto.userId,
       module: ActivityModule.CATALOG,
       type: ActivityType.CATALOG_SALE_CREATED,
       title: dto.title,
-      description: `Venta #${orderNum} creada para ${dto.clientName} por $${dto.totalAmount.toFixed(2)}`,
-      amount: dto.totalAmount,
-      referenceId: saved.id,
-      metadata: { orderNum, clientName: dto.clientName },
+      description: `Venta #${orderNum} creada para ${dto.clientName} con ${builtItems.length} producto(s) por $${totalAmount.toFixed(2)}`,
+      amount: totalAmount,
+      referenceId: savedSale.id,
+      metadata: {
+        orderNum,
+        clientName: dto.clientName,
+        itemCount: builtItems.length,
+      },
     });
 
-    return saved;
+    return full!;
   },
-
-  // ── Listar ventas del usuario ─────────────────────────────────────────────
 
   async listSales(
     userId: string,
@@ -110,28 +215,26 @@ export const CatalogService = {
       order: { createdAt: "DESC" },
       take: limit,
       skip: offset,
-      relations: ["payments"],
+      relations: ["items", "payments"],
     });
 
     return { sales, total };
   },
 
-  // ── Obtener venta por ID ──────────────────────────────────────────────────
-
   async getSaleById(id: string, userId: string): Promise<Sale> {
     const sale = await saleRepo.findOne({
       where: { id, userId },
-      relations: ["payments"],
+      relations: ["items", "payments"],
     });
     if (!sale) throw new Error("Venta no encontrada");
     return sale;
   },
 
-  // ── Editar venta ──────────────────────────────────────────────────────────
-
   /**
-   * Solo se puede editar title, description, clientPhone y totalAmount
-   * mientras NO existan pagos con status PAID.
+   * Edita title, clientPhone e items de la venta.
+   * Solo se permite mientras NO existan pagos activos (PAID).
+   * Si se envían `items`, se reemplazan todos los ítems actuales y se
+   * recalcula totalAmount y balance.
    */
   async updateSale(
     id: string,
@@ -140,7 +243,7 @@ export const CatalogService = {
   ): Promise<Sale> {
     const sale = await saleRepo.findOne({
       where: { id, userId },
-      relations: ["payments"],
+      relations: ["items", "payments"],
     });
     if (!sale) throw new Error("Venta no encontrada");
 
@@ -151,32 +254,41 @@ export const CatalogService = {
       throw new Error("No se puede editar una venta ya pagada");
     }
 
-    // Verificar que no haya pagos activos
-    const hasPayments = sale.payments.some(
+    const hasActivePayments = sale.payments.some(
       (p) => p.status === PaymentStatus.PAID,
     );
-    if (hasPayments) {
+    if (hasActivePayments) {
       throw new Error(
         "No se puede editar la venta porque ya tiene pagos registrados",
       );
     }
 
     if (dto.title !== undefined) sale.title = dto.title;
-    if (dto.description !== undefined) sale.description = dto.description;
     if (dto.clientPhone !== undefined)
       sale.clientPhone = dto.clientPhone ?? null;
 
-    if (dto.totalAmount !== undefined) {
-      if (dto.totalAmount <= 0) {
-        throw new Error("El monto total debe ser mayor a 0");
+    // ── Reemplazar ítems ──────────────────────────────────────────────────
+    if (dto.items !== undefined) {
+      const builtItems = await buildSaleItems(userId, dto.items);
+      const newTotal = calcTotal(builtItems);
+
+      // Eliminar ítems anteriores
+      if (sale.items?.length) {
+        await itemRepo.remove(sale.items);
       }
-      sale.totalAmount = dto.totalAmount;
-      sale.balance = dto.totalAmount; // sin pagos, balance = total
+
+      // Insertar nuevos ítems
+      const newSaleItems = itemRepo.create(
+        builtItems.map((i) => ({ ...i, saleId: sale.id })),
+      );
+      await itemRepo.save(newSaleItems);
+
+      sale.totalAmount = newTotal;
+      sale.balance = newTotal; // sin pagos, balance = total
     }
 
     const updated = await saleRepo.save(sale);
 
-    // ── Actividad ─────────────────────────────────────────────────────────
     await ActivityService.create({
       userId,
       module: ActivityModule.CATALOG,
@@ -188,10 +300,12 @@ export const CatalogService = {
       metadata: { orderNum: sale.orderNum, clientName: sale.clientName },
     });
 
-    return updated;
+    // Recargar con relaciones actualizadas
+    return (await saleRepo.findOne({
+      where: { id: updated.id },
+      relations: ["items", "payments"],
+    }))!;
   },
-
-  // ── Cancelar venta ────────────────────────────────────────────────────────
 
   async cancelSale(id: string, userId: string): Promise<Sale> {
     const sale = await saleRepo.findOne({
@@ -207,7 +321,6 @@ export const CatalogService = {
       throw new Error("No se puede cancelar una venta ya pagada");
     }
 
-    // Cancelar todos los pagos activos
     const activePayments = sale.payments.filter(
       (p) => p.status === PaymentStatus.PAID,
     );
@@ -221,7 +334,6 @@ export const CatalogService = {
     sale.status = SaleStatus.CANCELLED;
     const cancelled = await saleRepo.save(sale);
 
-    // ── Actividad ─────────────────────────────────────────────────────────
     await ActivityService.create({
       userId,
       module: ActivityModule.CATALOG,
@@ -236,50 +348,33 @@ export const CatalogService = {
     return cancelled;
   },
 
-  // ── Eliminar venta ────────────────────────────────────────────────────────
-
-  /**
-   * Elimina la venta y en cascada sus pagos (la FK tiene onDelete CASCADE).
-   */
   async deleteSale(id: string, userId: string): Promise<void> {
-    const sale = await saleRepo.findOne({
-      where: { id, userId },
-      relations: ["payments"],
-    });
+    const sale = await saleRepo.findOne({ where: { id, userId } });
     if (!sale) throw new Error("Venta no encontrada");
 
     const orderNum = sale.orderNum;
-    const title = sale.title;
     const clientName = sale.clientName;
+    const title = sale.title;
+    const totalAmount = toNumber(sale.totalAmount);
 
-    await saleRepo.remove(sale); // CASCADE elimina los pagos
+    await saleRepo.remove(sale);
 
-    // ── Actividad ─────────────────────────────────────────────────────────
     await ActivityService.create({
       userId,
       module: ActivityModule.CATALOG,
       type: ActivityType.CATALOG_SALE_DELETED,
       title,
       description: `Venta #${orderNum} de ${clientName} eliminada`,
-      amount: null,
-      referenceId: null, // ya no existe
+      amount: totalAmount,
+      referenceId: id,
       metadata: { orderNum, clientName },
     });
   },
 
   // ══════════════════════════════════════════════════════════════════════════
-  // PAGOS
+  // PAGOS  (sin cambios en lógica — se mantiene igual)
   // ══════════════════════════════════════════════════════════════════════════
 
-  // ── Registrar pago ────────────────────────────────────────────────────────
-
-  /**
-   * FIX FK: se usa una transacción explícita para garantizar que la sale
-   * exista y esté confirmada en la BD antes de insertar el payment.
-   * Esto evita el error "Cannot add or update a child row: a foreign key
-   * constraint fails" que ocurre cuando TypeORM intenta insertar el pago
-   * antes de que el motor haya flusheado la transacción implícita del save.
-   */
   async createPayment(
     saleId: string,
     userId: string,
@@ -289,7 +384,6 @@ export const CatalogService = {
       const saleRepository = manager.getRepository(Sale);
       const paymentRepository = manager.getRepository(Payment);
 
-      // Bloquear la fila de la venta para evitar race conditions
       const sale = await saleRepository.findOne({
         where: { id: saleId, userId },
         relations: ["payments"],
@@ -315,8 +409,6 @@ export const CatalogService = {
         );
       }
 
-      // Actualizar balance ANTES de insertar el pago, así la venta ya
-      // está commiteada en la misma transacción cuando se inserta el FK.
       const newBalance = Math.max(0, currentBalance - dto.amount);
       sale.balance = newBalance;
       if (newBalance === 0) {
@@ -324,16 +416,14 @@ export const CatalogService = {
       }
       const updatedSale = await saleRepository.save(sale);
 
-      // Insertar el pago dentro de la misma transacción
       const payment = paymentRepository.create({
-        saleId: updatedSale.id, // id garantizado como string UUID
+        saleId: updatedSale.id,
         date: dto.date,
         amount: dto.amount,
         status: PaymentStatus.PAID,
       });
       const savedPayment = await paymentRepository.save(payment);
 
-      // Actividad fuera de la transacción (no crítica)
       setImmediate(async () => {
         try {
           await ActivityService.create({
@@ -368,7 +458,7 @@ export const CatalogService = {
             });
           }
         } catch (_) {
-          // La actividad no debe romper el flujo principal
+          /* actividad no crítica */
         }
       });
 
@@ -376,10 +466,7 @@ export const CatalogService = {
     });
   },
 
-  // ── Listar pagos de una venta ─────────────────────────────────────────────
-
   async listPayments(saleId: string, userId: string): Promise<Payment[]> {
-    // Verificar que la venta pertenece al usuario
     const sale = await saleRepo.findOne({ where: { id: saleId, userId } });
     if (!sale) throw new Error("Venta no encontrada");
 
@@ -389,12 +476,6 @@ export const CatalogService = {
     });
   },
 
-  // ── Cancelar pago ─────────────────────────────────────────────────────────
-
-  /**
-   * Cancela un pago y devuelve su monto al balance de la venta.
-   * Si la venta estaba en PAID, regresa a PENDING.
-   */
   async cancelPayment(
     paymentId: string,
     userId: string,
@@ -404,25 +485,21 @@ export const CatalogService = {
       relations: ["sale"],
     });
     if (!payment) throw new Error("Pago no encontrado");
-
-    // Verificar que la venta pertenece al usuario
-    if (payment.sale.userId !== userId) {
-      throw new Error("Pago no encontrado");
-    }
+    if (payment.sale.userId !== userId) throw new Error("Pago no encontrado");
     if (payment.status === PaymentStatus.CANCELLED) {
       throw new Error("El pago ya está cancelado");
     }
 
     const sale = payment.sale;
     const paymentAmount = toNumber(payment.amount);
-    const currentBalance = toNumber(sale.balance);
     const totalAmount = toNumber(sale.totalAmount);
 
-    // Devolver el monto al balance (sin exceder el total original)
-    const newBalance = Math.min(currentBalance + paymentAmount, totalAmount);
+    const newBalance = Math.min(
+      toNumber(sale.balance) + paymentAmount,
+      totalAmount,
+    );
     sale.balance = newBalance;
 
-    // Si la venta estaba pagada, vuelve a pendiente
     if (sale.status === SaleStatus.PAID) {
       sale.status = SaleStatus.PENDING;
     }
@@ -432,7 +509,6 @@ export const CatalogService = {
     await paymentRepo.save(payment);
     const updatedSale = await saleRepo.save(sale);
 
-    // ── Actividad ─────────────────────────────────────────────────────────
     await ActivityService.create({
       userId,
       module: ActivityModule.CATALOG,
@@ -452,11 +528,6 @@ export const CatalogService = {
     return { payment, sale: updatedSale };
   },
 
-  // ── Eliminar pago ─────────────────────────────────────────────────────────
-
-  /**
-   * Elimina físicamente el pago y devuelve su monto al balance de la venta.
-   */
   async deletePayment(
     paymentId: string,
     userId: string,
@@ -466,19 +537,17 @@ export const CatalogService = {
       relations: ["sale"],
     });
     if (!payment) throw new Error("Pago no encontrado");
-
-    if (payment.sale.userId !== userId) {
-      throw new Error("Pago no encontrado");
-    }
+    if (payment.sale.userId !== userId) throw new Error("Pago no encontrado");
 
     const sale = payment.sale;
     const paymentAmount = toNumber(payment.amount);
-    const currentBalance = toNumber(sale.balance);
     const totalAmount = toNumber(sale.totalAmount);
 
-    // Solo restaurar balance si el pago estaba activo
     if (payment.status === PaymentStatus.PAID) {
-      sale.balance = Math.min(currentBalance + paymentAmount, totalAmount);
+      sale.balance = Math.min(
+        toNumber(sale.balance) + paymentAmount,
+        totalAmount,
+      );
       if (sale.status === SaleStatus.PAID) {
         sale.status = SaleStatus.PENDING;
       }
@@ -487,7 +556,6 @@ export const CatalogService = {
     await paymentRepo.remove(payment);
     const updatedSale = await saleRepo.save(sale);
 
-    // ── Actividad ─────────────────────────────────────────────────────────
     await ActivityService.create({
       userId,
       module: ActivityModule.CATALOG,

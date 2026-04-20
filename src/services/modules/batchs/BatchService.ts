@@ -412,8 +412,14 @@ export const BatchService = {
     // Guardamos los datos antes de eliminar para la actividad
     const batchName = batch.name;
     const batchStatus = batch.status;
+    const coverImagePublicId = batch.coverImagePublicId;
 
     const removed = await batchRepo.remove(batch);
+
+    // Eliminar imagen de Cloudinary después del remove para no dejar huérfanos
+    if (coverImagePublicId) {
+      await deleteImageFromCloudinary(coverImagePublicId);
+    }
 
     // ── Actividad: tanda eliminada ────────────────────────
     // referenceId = null porque el recurso ya no existe

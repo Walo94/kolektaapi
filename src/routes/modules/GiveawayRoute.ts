@@ -2,7 +2,7 @@
 import { Router } from "express";
 import { GiveawayController } from "@/controllers/modules/GiveawayController";
 import { authMiddleware } from "@/middlewares/authMiddleware";
-import { GiveawayTicketReceiptService } from "@/services/modules/GiveawayTicketReceiptService";
+import { GiveawayTicketReceiptService } from "@/services/modules/giveaways/GiveawayTicketReceiptService";
 
 const router = Router();
 

@@ -6,7 +6,7 @@ import {
   createHold,
   renewHold,
   releaseHold,
-} from "@/services/modules/GiveawayHoldService";
+} from "@/services/modules/giveaways/GiveawayHoldService";
 
 const router = Router();
 

@@ -6,6 +6,8 @@ import { BatchDetail } from "@/entities/modules/batchs/BatchDetail";
 import { Activity } from "@/entities/modules/Activity";
 import { Payment } from "@/entities/modules/catalogs/Payment";
 import { Sale } from "@/entities/modules/catalogs/Sale";
+import { SaleItem } from "@/entities/modules/catalogs/SaleItem";
+import { Product } from "@/entities/modules/catalogs/Product";
 import { Giveaway } from "@/entities/modules/giveaways/Giveaway";
 import { GiveawayDetail } from "@/entities/modules/giveaways/GiveawayDetail";
 import { GiveawayPrize } from "@/entities/modules/giveaways/GiveawayPrize";
@@ -33,6 +35,8 @@ export const AppDataSource = new DataSource({
     BatchDetail,
     Payment,
     Sale,
+    SaleItem,
+    Product,
     Giveaway,
     GiveawayDetail,
     GiveawayPrize,

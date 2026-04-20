@@ -1,10 +1,18 @@
 import { Router } from "express";
 import { CatalogController } from "@/controllers/modules/CatalogController";
+import { ProductController } from "@/controllers/modules/ProductController";
 import { authMiddleware } from "@/middlewares/authMiddleware";
 import { PaymentReceiptService } from "@/services/modules/PaymentReceiptService";
 
 const router = Router();
 router.use(authMiddleware);
+
+// ── Productos (catálogo del usuario) ──────────────────────────────────────────
+router.post("/catalog/products", ProductController.createProduct);
+router.get("/catalog/products", ProductController.listProducts);
+router.get("/catalog/products/:id", ProductController.getProduct);
+router.patch("/catalog/products/:id", ProductController.updateProduct);
+router.delete("/catalog/products/:id", ProductController.deleteProduct);
 
 // ── Ventas ────────────────────────────────────────────────────────────────────
 router.post("/catalog/sales", CatalogController.createSale);
@@ -15,9 +23,6 @@ router.patch("/catalog/sales/:id/cancel", CatalogController.cancelSale);
 router.delete("/catalog/sales/:id", CatalogController.deleteSale);
 
 // ── Pagos ─────────────────────────────────────────────────────────────────────
-// IMPORTANTE: las rutas de pagos individuales van ANTES que /:saleId/payments
-// para evitar conflictos de matching
-
 router.post("/catalog/sales/:saleId/payments", CatalogController.createPayment);
 router.get("/catalog/sales/:saleId/payments", CatalogController.listPayments);
 router.patch("/catalog/payments/:id/cancel", CatalogController.cancelPayment);

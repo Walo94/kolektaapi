@@ -46,6 +46,10 @@ export enum ActivityType {
   // ── Catálogo — Pagos ──────────────────────────────────────────────────────
   CATALOG_PAYMENT_REGISTERED = "catalog_payment_registered",
   CATALOG_PAYMENT_CANCELLED = "catalog_payment_cancelled",
+
+  CATALOG_PRODUCT_CREATED = "catalog_product_created",
+  CATALOG_PRODUCT_UPDATED = "catalog_product_updated",
+  CATALOG_PRODUCT_DELETED = "catalog_product_deleted",
 }
 
 @Entity("activities")

@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { BatchService } from "@/services/modules/BatchService";
+import { BatchService } from "@/services/modules/batchs/BatchService";
 import { BatchFrequency, BatchStatus } from "@/entities/modules/batchs/Batch";
 
 export const BatchController = {

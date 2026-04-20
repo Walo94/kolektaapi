@@ -1,5 +1,5 @@
 import { Response } from "express";
-import { NotificationService } from "@/services/modules/NotificationService";
+import { NotificationService } from "@/services/modules/notifications/NotificationService";
 import { NotificationType } from "@/entities/modules/notifications/Notification";
 
 export const NotificationController = {
