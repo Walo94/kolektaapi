@@ -21,12 +21,6 @@ router.post(
   UserController.resendVerificationEmail,
 );
 
-router.post(
-  "/profile/start-trial",
-  authMiddleware,
-  UserController.startFreeTrial,
-);
-
 router.put(
   "/profile/change-password",
   authMiddleware,

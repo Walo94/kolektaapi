@@ -450,19 +450,4 @@ export const UserService = {
 
     return { message: "Teléfono verificado exitosamente" };
   },
-
-  async startFreeTrial(userId: string) {
-    const user = await userRepo.findOne({ where: { id: userId } });
-    if (!user) throw new Error("Usuario no encontrado");
-
-    if (user.trialEndsAt && user.trialEndsAt > new Date()) {
-      throw new Error("Ya tienes un trial activo");
-    }
-
-    user.subscriptionPlan = SubscriptionPlan.TRIAL;
-    user.trialEndsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 días
-    await userRepo.save(user);
-
-    return { message: "Prueba gratis de 7 días activada" };
-  },
 };

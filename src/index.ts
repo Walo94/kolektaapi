@@ -25,8 +25,7 @@ const httpServer = createServer(app);
 
 // ── Socket.IO (misma instancia HTTP, sin puerto extra) ─────────────────────
 const allowedOriginsList = [
-  "http://localhost:8080",
-  "http://192.168.70.108:8080",
+  "https://kolekta.athleticfootwear.org",
   "https://kolekta.gamezdev.com.mx",
 ];
 

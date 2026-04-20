@@ -47,21 +47,6 @@ export const UserController = {
     }
   },
 
-  async startFreeTrial(req: any, res: Response) {
-    try {
-      const userId = req.user.id;
-
-      if (!userId) {
-        return res.status(400).json({ error: "El usuario es requerido" });
-      }
-
-      const result = await UserService.startFreeTrial(userId);
-      res.json(result);
-    } catch (error: any) {
-      res.status(400).json({ error: error.message });
-    }
-  },
-
   async refreshUserInfo(req: any, res: Response) {
     try {
       const userId = req.user.id;
