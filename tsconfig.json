@@ -1,70 +1,57 @@
 {
-    "compilerOptions": {
-        // ConfiguraciÃ³n de rutas
-        "baseUrl": ".",
-        "paths": {
-            "@/*": [
-                "src/*"
-            ]
-        },
-        "rootDir": "./src",
-        "outDir": "./dist",
-        // Configuración de modulos
-        "module": "ESNext",
-        "target": "ES2022",
-        "moduleResolution": "node",
-        "esModuleInterop": true,
-        "allowSyntheticDefaultImports": true,
-        // Para TypeORM decorators
-        "experimentalDecorators": true,
-        "emitDecoratorMetadata": true,
-        // Tipos
-        "types": [
-            "node"
-        ],
-        "lib": [
-            "ES2022"
-        ],
-        // Opciones de salida
-        "sourceMap": true,
-        "declaration": true,
-        "declarationMap": true,
-        // Opciones de tipo checking (RELAJADAS para que compile)
-        "strict": false,
-        "noImplicitAny": false,
-        "strictNullChecks": false,
-        "strictFunctionTypes": false,
-        "strictBindCallApply": false,
-        "strictPropertyInitialization": false,
-        "noImplicitThis": false,
-        "alwaysStrict": false,
-        // Otras opciones Ãºtiles
-        "skipLibCheck": true,
-        "resolveJsonModule": true,
-        "isolatedModules": true,
-        "forceConsistentCasingInFileNames": true,
-        // Para que no falle con parÃ¡metros no usados
-        "noUnusedLocals": false,
-        "noUnusedParameters": false,
-        "noImplicitReturns": false,
-        // Permitir archivos JS
-        "allowJs": false
+  "compilerOptions": {
+    "ignoreDeprecations": "6.0",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": [
+        "src/*"
+      ]
     },
-    "include": [
-        "src/**/*"
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "module": "CommonJS",
+    "target": "ES2022",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "types": [
+      "node"
     ],
-    "exclude": [
-        "node_modules",
-        "dist",
-        "**/*.spec.ts",
-        "**/*.test.ts"
+    "lib": [
+      "ES2022"
     ],
-    "ts-node": {
-        "esm": true,
-        "experimentalSpecifierResolution": "node"
-    },
-    "tsc-alias": {
-        "verbose": false,
-        "resolveFullPaths": true
-    }
+    "sourceMap": true,
+    "declaration": true,
+    "declarationMap": true,
+    "strict": false,
+    "noImplicitAny": false,
+    "strictNullChecks": false,
+    "strictFunctionTypes": false,
+    "strictBindCallApply": false,
+    "strictPropertyInitialization": false,
+    "noImplicitThis": false,
+    "alwaysStrict": false,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "forceConsistentCasingInFileNames": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noImplicitReturns": false,
+    "allowJs": false
+  },
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.spec.ts",
+    "**/*.test.ts"
+  ],
+  "tsc-alias": {
+    "verbose": false,
+    "resolveFullPaths": true
+  }
 }

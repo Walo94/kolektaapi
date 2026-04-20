@@ -11,7 +11,6 @@ export const EmailService = {
   ): Promise<void> {
     const verificationUrl = `${process.env.FRONTEND_URL}/verify-email/${verificationToken}`;
 
-    // Logo de Kolekta alojado en tu dominio (colócalo en /public/logo.png de tu React app)
     const logoUrl = `${process.env.FRONTEND_URL}/logo.png`;
 
     try {
