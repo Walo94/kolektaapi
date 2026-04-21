@@ -10,6 +10,7 @@ yarn-error.log*
 
 # Archivos de entorno
 .env
+.env.production
 
 # Build / producción
 dist/
