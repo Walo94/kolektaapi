@@ -499,7 +499,7 @@ export const GiveawayService = {
         d.status === TicketStatus.PAID || d.status === TicketStatus.RESERVED,
     );
 
-    if (hasSoldOrReserved && giveaway.status !== GiveawayStatus.FINISHED) {
+    if (hasSoldOrReserved && giveaway.status === GiveawayStatus.OPEN) {
       throw new Error(
         "No se puede eliminar la rifa mientras haya boletos vendidos o apartados. Cancela la rifa primero.",
       );
