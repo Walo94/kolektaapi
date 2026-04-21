@@ -8,6 +8,8 @@ const router = Router();
 
 // Stats para el home screen (debe ir ANTES de /batchs/:id para evitar conflicto)
 router.get("/batchs/stats", authMiddleware, BatchController.getBatchStats);
+// Búsqueda full-text (nombre de tanda o participante)
+router.get("/batchs/search", authMiddleware, BatchController.searchBatchs);
 
 // CRUD principal
 router.post("/batchs", authMiddleware, BatchController.createBatch);

@@ -329,4 +329,38 @@ export const BatchController = {
       res.status(400).json({ error: error.message });
     }
   },
+
+  /**
+   * GET /batchs/search?q=texto&limit=20&offset=0&status=active
+   * Busca tandas por nombre o nombre de participante.
+   * Devuelve grupos: { active, finished, cancelled } cada uno con { batchs, total }.
+   * Si se envía `status`, solo devuelve ese grupo (para load-more por sección).
+   */
+  async searchBatchs(req: any, res: Response) {
+    try {
+      const userId = req.user.id;
+      const { q, limit, offset, status } = req.query;
+
+      if (!q || String(q).trim().length < 1) {
+        return res.status(400).json({ error: "El parámetro q es requerido" });
+      }
+
+      const validStatuses = Object.values(BatchStatus);
+      if (status && !validStatuses.includes(status as BatchStatus)) {
+        return res.status(400).json({
+          error: `status debe ser uno de: ${validStatuses.join(", ")}`,
+        });
+      }
+
+      const result = await BatchService.searchBatchs(userId, String(q).trim(), {
+        limit: limit ? Number(limit) : 20,
+        offset: offset ? Number(offset) : 0,
+        status: status as BatchStatus | undefined,
+      });
+
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  },
 };

@@ -752,4 +752,79 @@ export const BatchService = {
       where: { userId, status: BatchStatus.ACTIVE },
     });
   },
+
+  // ── Búsqueda ──────────────────────────────────────────────────────────────
+
+  /**
+   * Busca tandas del usuario por nombre de tanda o nombre de participante.
+   * Devuelve resultados agrupados por status con paginación independiente.
+   *
+   * Si se envía `status`, solo devuelve ese grupo (útil para load-more).
+   * Si no se envía `status`, devuelve los tres grupos en una sola consulta.
+   */
+  async searchBatchs(
+    userId: string,
+    query: string,
+    options: {
+      limit?: number;
+      offset?: number;
+      status?: BatchStatus;
+    } = {},
+  ): Promise<{
+    active?: { batchs: Batch[]; total: number };
+    finished?: { batchs: Batch[]; total: number };
+    cancelled?: { batchs: Batch[]; total: number };
+  }> {
+    const { limit = 20, offset = 0, status } = options;
+    const q = `%${query.toLowerCase()}%`;
+
+    const statuses: BatchStatus[] = status
+      ? [status]
+      : [BatchStatus.ACTIVE, BatchStatus.FINISHED, BatchStatus.CANCELLED];
+
+    const result: Record<string, { batchs: Batch[]; total: number }> = {};
+
+    for (const st of statuses) {
+      // Subconsulta: IDs de tandas que tienen un participante con ese nombre
+      const matchingByParticipant = await detailRepo
+        .createQueryBuilder("d")
+        .select("DISTINCT d.batchId", "batchId")
+        .innerJoin(
+          "d.batch",
+          "b",
+          "b.userId = :userId AND b.status = :status",
+          {
+            userId,
+            status: st,
+          },
+        )
+        .where("LOWER(d.contactName) LIKE :q", { q })
+        .getRawMany<{ batchId: string }>();
+
+      const participantBatchIds = matchingByParticipant.map((r) => r.batchId);
+
+      // Query principal: tandas por nombre O que tengan un participante coincidente
+      const qb = batchRepo
+        .createQueryBuilder("b")
+        .where("b.userId = :userId", { userId })
+        .andWhere("b.status = :status", { status: st })
+        .andWhere(
+          participantBatchIds.length > 0
+            ? "(LOWER(b.name) LIKE :q OR b.id IN (:...ids))"
+            : "LOWER(b.name) LIKE :q",
+          participantBatchIds.length > 0
+            ? { q, ids: participantBatchIds }
+            : { q },
+        )
+        .orderBy("b.createdAt", "DESC");
+
+      const total = await qb.getCount();
+      const batchs = await qb.skip(offset).take(limit).getMany();
+
+      const key = st.toLowerCase() as "active" | "finished" | "cancelled";
+      result[key] = { batchs, total };
+    }
+
+    return result;
+  },
 };

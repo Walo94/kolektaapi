@@ -18,16 +18,14 @@ import { GiveawayAutoDrawService } from "@/services/modules/giveaways/GiveawayAu
 import NotificationRoute from "@/routes/modules/NotificationRoute";
 import { NotificationScheduler } from "@/services/modules/notifications/NotificationScheduler";
 import StripeRoute from "@/routes/admin/StripeRoute";
+import GooglePlayRoute from "@/routes/admin/GooglePlayRoute";
 import { initGiveawaySocket } from "@/services/modules/giveaways/GiveawaySocketService";
 
 const app = express();
 const httpServer = createServer(app);
 
 // ── Socket.IO (misma instancia HTTP, sin puerto extra) ─────────────────────
-const allowedOriginsList = [
-  "https://kolekta.athleticfootwear.org",
-  "https://kolekta.gamezdev.com.mx",
-];
+const allowedOriginsList = process.env.ALLOWED_ORIGINS?.split(",") || [];
 
 const io = new SocketIOServer(httpServer, {
   cors: {
@@ -36,8 +34,7 @@ const io = new SocketIOServer(httpServer, {
     credentials: true,
   },
   // Ruta del endpoint de WS: /kolekta-ws
-  // El cliente conecta con: io("https://api.tudominio.com", { path: "/kolekta-ws" })
-  path: "/kolekta-ws",
+  path: process.env.SOCKET_PATH,
 });
 
 initGiveawaySocket(io);
@@ -97,6 +94,9 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 // ── STRIPE (checkout, portal, transactions, webhook) ─────────────
 app.use("/kolekta-api/subscription", StripeRoute);
+
+// ── GOOGLE PLAY ───────────────────────────────────────────────────────────
+app.use("/kolekta-api/subscription/google", GooglePlayRoute);
 
 // ── RUTAS PÚBLICAS (sin auth) ─────────────────────────────────────
 app.use("/kolekta-api/modules", BatchSharedRoute);
