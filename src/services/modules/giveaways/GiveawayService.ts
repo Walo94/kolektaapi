@@ -942,4 +942,57 @@ export const GiveawayService = {
 
     return saved;
   },
+
+  /**
+   * Busca rifas del usuario por título o descripción.
+   * Devuelve resultados agrupados por status con paginación independiente.
+   *
+   * Si se envía `status`, solo devuelve ese grupo (útil para load-more).
+   */
+  async searchGiveaways(
+    userId: string,
+    query: string,
+    options: {
+      limit?: number;
+      offset?: number;
+      status?: GiveawayStatus;
+    } = {},
+  ): Promise<{
+    open?: { giveaways: Giveaway[]; total: number };
+    finished?: { giveaways: Giveaway[]; total: number };
+    cancelled?: { giveaways: Giveaway[]; total: number };
+  }> {
+    const { limit = 20, offset = 0, status } = options;
+    const q = `%${query.toLowerCase()}%`;
+
+    const statuses: GiveawayStatus[] = status
+      ? [status]
+      : [
+          GiveawayStatus.OPEN,
+          GiveawayStatus.FINISHED,
+          GiveawayStatus.CANCELLED,
+        ];
+
+    const result: Record<string, { giveaways: Giveaway[]; total: number }> = {};
+
+    for (const st of statuses) {
+      const qb = giveawayRepo
+        .createQueryBuilder("g")
+        .where("g.userId = :userId", { userId })
+        .andWhere("g.status = :status", { status: st })
+        .andWhere(
+          "(LOWER(g.title) LIKE :q OR LOWER(COALESCE(g.description, '')) LIKE :q)",
+          { q },
+        )
+        .orderBy("g.createdAt", "DESC");
+
+      const total = await qb.getCount();
+      const giveaways = await qb.skip(offset).take(limit).getMany();
+
+      const key = st.toLowerCase() as "open" | "finished" | "cancelled";
+      result[key] = { giveaways, total };
+    }
+
+    return result;
+  },
 };

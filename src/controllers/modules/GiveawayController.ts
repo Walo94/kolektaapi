@@ -396,4 +396,42 @@ export const GiveawayController = {
       res.status(400).json({ error: error.message });
     }
   },
+
+  /**
+   * GET /giveaways/search?q=texto&limit=20&offset=0&status=open
+   * Busca rifas por título o descripción.
+   * Devuelve grupos: { open, finished, cancelled } cada uno con { giveaways, total }.
+   * Si se envía `status`, solo devuelve ese grupo (para load-more por sección).
+   */
+  async searchGiveaways(req: any, res: Response) {
+    try {
+      const userId = req.user.id;
+      const { q, limit, offset, status } = req.query;
+
+      if (!q || String(q).trim().length < 1) {
+        return res.status(400).json({ error: "El parámetro q es requerido" });
+      }
+
+      const validStatuses = Object.values(GiveawayStatus);
+      if (status && !validStatuses.includes(status as GiveawayStatus)) {
+        return res.status(400).json({
+          error: `status debe ser uno de: ${validStatuses.join(", ")}`,
+        });
+      }
+
+      const result = await GiveawayService.searchGiveaways(
+        userId,
+        String(q).trim(),
+        {
+          limit: limit ? Number(limit) : 20,
+          offset: offset ? Number(offset) : 0,
+          status: status as GiveawayStatus | undefined,
+        },
+      );
+
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  },
 };

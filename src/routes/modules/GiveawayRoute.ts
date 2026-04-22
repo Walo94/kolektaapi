@@ -14,6 +14,13 @@ router.get(
   GiveawayController.getGiveawayStats,
 );
 
+// Búsqueda por título o descripción
+router.get(
+  "/giveaways/search",
+  authMiddleware,
+  GiveawayController.searchGiveaways,
+);
+
 // ── CRUD rifa ─────────────────────────────────────────────────────────────────
 router.post("/giveaways", authMiddleware, GiveawayController.createGiveaway);
 router.get("/giveaways", authMiddleware, GiveawayController.listGiveaways);
