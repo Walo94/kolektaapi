@@ -18,7 +18,6 @@ import { GiveawayAutoDrawService } from "@/services/modules/giveaways/GiveawayAu
 import NotificationRoute from "@/routes/modules/NotificationRoute";
 import { NotificationScheduler } from "@/services/modules/notifications/NotificationScheduler";
 import StripeRoute from "@/routes/admin/StripeRoute";
-import GooglePlayRoute from "@/routes/admin/GooglePlayRoute";
 import { initGiveawaySocket } from "@/services/modules/giveaways/GiveawaySocketService";
 
 const app = express();
@@ -94,9 +93,6 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 // ── STRIPE (checkout, portal, transactions, webhook) ─────────────
 app.use("/kolekta-api/subscription", StripeRoute);
-
-// ── GOOGLE PLAY ───────────────────────────────────────────────────────────
-app.use("/kolekta-api/subscription/google", GooglePlayRoute);
 
 // ── RUTAS PÚBLICAS (sin auth) ─────────────────────────────────────
 app.use("/kolekta-api/modules", BatchSharedRoute);
