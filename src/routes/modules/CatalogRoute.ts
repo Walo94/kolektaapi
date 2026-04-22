@@ -7,6 +7,8 @@ import { PaymentReceiptService } from "@/services/modules/PaymentReceiptService"
 const router = Router();
 router.use(authMiddleware);
 
+router.get("/catalog/sales/search", CatalogController.searchSales);
+
 // ── Productos (catálogo del usuario) ──────────────────────────────────────────
 router.post("/catalog/products", ProductController.createProduct);
 router.get("/catalog/products", ProductController.listProducts);
@@ -21,7 +23,6 @@ router.get("/catalog/sales/:id", CatalogController.getSale);
 router.patch("/catalog/sales/:id", CatalogController.updateSale);
 router.patch("/catalog/sales/:id/cancel", CatalogController.cancelSale);
 router.delete("/catalog/sales/:id", CatalogController.deleteSale);
-router.get("/catalog/sales/search", CatalogController.searchSales);
 
 // ── Pagos ─────────────────────────────────────────────────────────────────────
 router.post("/catalog/sales/:saleId/payments", CatalogController.createPayment);

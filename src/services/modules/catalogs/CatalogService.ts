@@ -603,7 +603,6 @@ export const CatalogService = {
     const result: Record<string, { sales: Sale[]; total: number }> = {};
 
     for (const st of statuses) {
-      // 🔧 CORRECCIÓN: Hacer un solo leftJoin y reutilizar el alias
       const qb = saleRepo
         .createQueryBuilder("s")
         .leftJoinAndSelect("s.items", "saleItems")
