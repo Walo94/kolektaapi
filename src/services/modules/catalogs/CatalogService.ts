@@ -603,30 +603,26 @@ export const CatalogService = {
     const result: Record<string, { sales: Sale[]; total: number }> = {};
 
     for (const st of statuses) {
-      // Subconsulta para buscar en productName de SaleItem
+      // 🔧 CORRECCIÓN: Hacer un solo leftJoin y reutilizar el alias
       const qb = saleRepo
         .createQueryBuilder("s")
-        .leftJoin("s.items", "items")
+        .leftJoinAndSelect("s.items", "saleItems")
+        .leftJoinAndSelect("s.payments", "payments")
         .where("s.userId = :userId", { userId })
         .andWhere("s.status = :status", { status: st })
         .andWhere(
           `(
-            LOWER(s.clientName) LIKE :q OR 
-            LOWER(s.title) LIKE :q OR 
-            LOWER(items.productName) LIKE :q
-          )`,
+          LOWER(s.clientName) LIKE :q OR 
+          LOWER(s.title) LIKE :q OR 
+          LOWER(saleItems.productName) LIKE :q
+        )`,
           { q },
         )
         .distinct(true)
         .orderBy("s.createdAt", "DESC");
 
       const total = await qb.getCount();
-      const sales = await qb
-        .skip(offset)
-        .take(limit)
-        .leftJoinAndSelect("s.items", "items")
-        .leftJoinAndSelect("s.payments", "payments")
-        .getMany();
+      const sales = await qb.skip(offset).take(limit).getMany();
 
       const key = st.toLowerCase() as "pending" | "paid" | "cancelled";
       result[key] = { sales, total };
