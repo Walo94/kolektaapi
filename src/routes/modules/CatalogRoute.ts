@@ -21,6 +21,7 @@ router.get("/catalog/sales/:id", CatalogController.getSale);
 router.patch("/catalog/sales/:id", CatalogController.updateSale);
 router.patch("/catalog/sales/:id/cancel", CatalogController.cancelSale);
 router.delete("/catalog/sales/:id", CatalogController.deleteSale);
+router.get("/catalog/sales/search", CatalogController.searchSales);
 
 // ── Pagos ─────────────────────────────────────────────────────────────────────
 router.post("/catalog/sales/:saleId/payments", CatalogController.createPayment);

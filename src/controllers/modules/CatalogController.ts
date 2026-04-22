@@ -210,4 +210,42 @@ export const CatalogController = {
       res.status(400).json({ error: error.message });
     }
   },
+
+  /**
+   * GET /catalog/sales/search?q=texto&limit=20&offset=0&status=pending
+   * Busca ventas por clientName, title o productName.
+   * Devuelve grupos: { pending, paid, cancelled } cada uno con { sales, total }.
+   * Si se envía `status`, solo devuelve ese grupo (para load-more por sección).
+   */
+  async searchSales(req: any, res: Response) {
+    try {
+      const userId = req.user.id;
+      const { q, limit, offset, status } = req.query;
+
+      if (!q || String(q).trim().length < 1) {
+        return res.status(400).json({ error: "El parámetro q es requerido" });
+      }
+
+      const validStatuses = Object.values(SaleStatus);
+      if (status && !validStatuses.includes(status as SaleStatus)) {
+        return res.status(400).json({
+          error: `status debe ser uno de: ${validStatuses.join(", ")}`,
+        });
+      }
+
+      const result = await CatalogService.searchSales(
+        userId,
+        String(q).trim(),
+        {
+          limit: limit ? Number(limit) : 20,
+          offset: offset ? Number(offset) : 0,
+          status: status as SaleStatus | undefined,
+        },
+      );
+
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  },
 };

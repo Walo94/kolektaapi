@@ -573,4 +573,65 @@ export const CatalogService = {
 
     return { sale: updatedSale };
   },
+
+  /**
+   * Busca ventas por clientName, title o productName de los items.
+   * Devuelve resultados agrupados por status con paginación independiente.
+   *
+   * Si se envía `status`, solo devuelve ese grupo (útil para load-more).
+   */
+  async searchSales(
+    userId: string,
+    query: string,
+    options: {
+      limit?: number;
+      offset?: number;
+      status?: SaleStatus;
+    } = {},
+  ): Promise<{
+    pending?: { sales: Sale[]; total: number };
+    paid?: { sales: Sale[]; total: number };
+    cancelled?: { sales: Sale[]; total: number };
+  }> {
+    const { limit = 20, offset = 0, status } = options;
+    const q = `%${query.toLowerCase()}%`;
+
+    const statuses: SaleStatus[] = status
+      ? [status]
+      : [SaleStatus.PENDING, SaleStatus.PAID, SaleStatus.CANCELLED];
+
+    const result: Record<string, { sales: Sale[]; total: number }> = {};
+
+    for (const st of statuses) {
+      // Subconsulta para buscar en productName de SaleItem
+      const qb = saleRepo
+        .createQueryBuilder("s")
+        .leftJoin("s.items", "items")
+        .where("s.userId = :userId", { userId })
+        .andWhere("s.status = :status", { status: st })
+        .andWhere(
+          `(
+            LOWER(s.clientName) LIKE :q OR 
+            LOWER(s.title) LIKE :q OR 
+            LOWER(items.productName) LIKE :q
+          )`,
+          { q },
+        )
+        .distinct(true)
+        .orderBy("s.createdAt", "DESC");
+
+      const total = await qb.getCount();
+      const sales = await qb
+        .skip(offset)
+        .take(limit)
+        .leftJoinAndSelect("s.items", "items")
+        .leftJoinAndSelect("s.payments", "payments")
+        .getMany();
+
+      const key = st.toLowerCase() as "pending" | "paid" | "cancelled";
+      result[key] = { sales, total };
+    }
+
+    return result;
+  },
 };
