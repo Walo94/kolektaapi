@@ -249,7 +249,7 @@ export const CatalogService = {
 
     if (!sale) throw new Error("Venta no encontrada");
 
-    // Validaciones
+    // Validaciones...
     if (sale.status === SaleStatus.CANCELLED) {
       throw new Error("No se puede editar una venta cancelada");
     }
@@ -274,65 +274,62 @@ export const CatalogService = {
 
     // ── Reemplazar ítems (si se enviaron) ──────────────────────────────────
     if (dto.items !== undefined) {
-      // Validar que los items no estén vacíos
       if (!dto.items.length) {
         throw new Error("La venta debe tener al menos un producto");
       }
 
-      // Construir nuevos items con snapshot de productos
       const builtItems = await buildSaleItems(userId, dto.items);
       const newTotal = calcTotal(builtItems);
 
-      // IMPORTANTE: Usar la misma conexión que tiene TypeORM
-      const queryRunner = AppDataSource.createQueryRunner();
+      // ⚠️ CRÍTICO: Limpiar la relación en memoria para evitar que TypeORM
+      // intente manejar los items automáticamente
+      sale.items = [];
 
+      const queryRunner = AppDataSource.createQueryRunner();
       await queryRunner.connect();
       await queryRunner.startTransaction();
 
       try {
-        // 1. Eliminar TODOS los items existentes
-        await queryRunner.manager.delete(SaleItem, { saleId: sale.id });
+        // 1. Eliminar TODOS los items existentes de forma directa
+        await queryRunner.manager
+          .createQueryBuilder()
+          .delete()
+          .from(SaleItem)
+          .where("saleId = :saleId", { saleId: sale.id })
+          .execute();
 
         // 2. Insertar los nuevos items
-        if (builtItems.length > 0) {
-          const newSaleItems = builtItems.map((item) => {
-            const saleItem = new SaleItem();
-            saleItem.saleId = sale.id;
-            saleItem.productId = item.productId;
-            saleItem.productName = item.productName;
-            saleItem.unitPrice = item.unitPrice;
-            saleItem.quantity = item.quantity;
-            saleItem.subtotal = item.subtotal;
-            return saleItem;
-          });
+        for (const item of builtItems) {
+          const saleItem = new SaleItem();
+          saleItem.saleId = sale.id;
+          saleItem.productId = item.productId;
+          saleItem.productName = item.productName;
+          saleItem.unitPrice = item.unitPrice;
+          saleItem.quantity = item.quantity;
+          saleItem.subtotal = item.subtotal;
 
-          await queryRunner.manager.save(SaleItem, newSaleItems);
+          await queryRunner.manager.save(SaleItem, saleItem);
         }
 
-        // 3. Actualizar la venta con nuevos totales
+        // 3. Actualizar la venta
         sale.totalAmount = newTotal;
-        sale.balance = newTotal; // Sin pagos, balance = total
+        sale.balance = newTotal;
 
         await queryRunner.manager.save(Sale, sale);
 
-        // 4. Commit de la transacción
         await queryRunner.commitTransaction();
-
       } catch (error) {
-        // Rollback en caso de error
         await queryRunner.rollbackTransaction();
-        console.error("Error en transacción de updateSale:", error);
+        console.error("Error en transacción:", error);
         throw new Error(`Error al actualizar los productos: ${error.message}`);
       } finally {
-        // Liberar el queryRunner
         await queryRunner.release();
       }
     } else {
-      // Solo actualizar campos simples
       await saleRepo.save(sale);
     }
 
-    // Registrar actividad
+    // Actividad...
     await ActivityService.create({
       userId,
       module: ActivityModule.CATALOG,
@@ -344,7 +341,7 @@ export const CatalogService = {
       metadata: { orderNum: sale.orderNum, clientName: sale.clientName },
     });
 
-    // Recargar la venta con todas sus relaciones actualizadas
+    // Recargar la venta (con queryRunner ya liberado)
     const updatedSale = await saleRepo.findOne({
       where: { id: sale.id },
       relations: ["items", "payments"],
