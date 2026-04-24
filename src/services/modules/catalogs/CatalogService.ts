@@ -249,7 +249,7 @@ export const CatalogService = {
 
     if (!sale) throw new Error("Venta no encontrada");
 
-    // Validaciones...
+    // Validaciones
     if (sale.status === SaleStatus.CANCELLED) {
       throw new Error("No se puede editar una venta cancelada");
     }
@@ -272,64 +272,97 @@ export const CatalogService = {
     if (dto.title !== undefined) sale.title = dto.title;
     if (dto.clientPhone !== undefined) sale.clientPhone = dto.clientPhone ?? null;
 
+    // Si hay pagos, solo actualizar campos simples
+    if (sale.payments.length > 0 && dto.items !== undefined) {
+      throw new Error(
+        "No se pueden modificar los productos porque la venta ya tiene pagos registrados"
+      );
+    }
+
     // ── Reemplazar ítems (si se enviaron) ──────────────────────────────────
     if (dto.items !== undefined) {
       if (!dto.items.length) {
         throw new Error("La venta debe tener al menos un producto");
       }
 
+      console.log(`🔄 Actualizando items de venta ${sale.orderNum}...`);
+
       const builtItems = await buildSaleItems(userId, dto.items);
       const newTotal = calcTotal(builtItems);
 
-      // ⚠️ CRÍTICO: Limpiar la relación en memoria para evitar que TypeORM
-      // intente manejar los items automáticamente
-      sale.items = [];
-
+      // Usar queryRunner para RAW SQL
       const queryRunner = AppDataSource.createQueryRunner();
-      await queryRunner.connect();
-      await queryRunner.startTransaction();
 
       try {
-        // 1. Eliminar TODOS los items existentes de forma directa
-        await queryRunner.manager
-          .createQueryBuilder()
-          .delete()
-          .from(SaleItem)
-          .where("saleId = :saleId", { saleId: sale.id })
-          .execute();
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
 
-        // 2. Insertar los nuevos items
-        for (const item of builtItems) {
-          const saleItem = new SaleItem();
-          saleItem.saleId = sale.id;
-          saleItem.productId = item.productId;
-          saleItem.productName = item.productName;
-          saleItem.unitPrice = item.unitPrice;
-          saleItem.quantity = item.quantity;
-          saleItem.subtotal = item.subtotal;
+        // PASO 1: Verificar que la venta existe
+        const saleExists = await queryRunner.manager.query(
+          'SELECT id FROM sales WHERE id = $1 FOR UPDATE',
+          [sale.id]
+        );
 
-          await queryRunner.manager.save(SaleItem, saleItem);
+        if (!saleExists.length) {
+          throw new Error("Venta no encontrada durante la transacción");
         }
 
-        // 3. Actualizar la venta
-        sale.totalAmount = newTotal;
-        sale.balance = newTotal;
+        // PASO 2: Eliminar items existentes
+        console.log(`  🗑️ Eliminando items antiguos...`);
+        const deleteResult = await queryRunner.manager.query(
+          'DELETE FROM sale_items WHERE "saleId" = $1',
+          [sale.id]
+        );
+        console.log(`  ✅ Eliminados ${deleteResult[1]} items`);
 
-        await queryRunner.manager.save(Sale, sale);
+        // PASO 3: Insertar nuevos items
+        console.log(`  📝 Insertando ${builtItems.length} nuevos items...`);
+        for (let i = 0; i < builtItems.length; i++) {
+          const item = builtItems[i];
+          await queryRunner.manager.query(
+            `INSERT INTO sale_items 
+           ("id", "saleId", "productId", "productName", "unitPrice", "quantity", "subtotal", "createdAt") 
+           VALUES (UUID(), $1, $2, $3, $4, $5, $6, NOW())`,
+            [
+              sale.id,
+              item.productId,
+              item.productName,
+              item.unitPrice,
+              item.quantity,
+              item.subtotal
+            ]
+          );
+        }
+        console.log(`  ✅ Insertados ${builtItems.length} items`);
 
+        // PASO 4: Actualizar totales de la venta
+        await queryRunner.manager.query(
+          `UPDATE sales 
+         SET "totalAmount" = $1, 
+             "balance" = $2, 
+             "updatedAt" = NOW() 
+         WHERE id = $3`,
+          [newTotal, newTotal, sale.id]
+        );
+        console.log(`  ✅ Venta actualizada: total $${newTotal}`);
+
+        // Confirmar todo
         await queryRunner.commitTransaction();
+        console.log(`✅ Venta ${sale.orderNum} actualizada exitosamente`);
+
       } catch (error) {
         await queryRunner.rollbackTransaction();
-        console.error("Error en transacción:", error);
+        console.error("❌ Error en transacción:", error);
         throw new Error(`Error al actualizar los productos: ${error.message}`);
       } finally {
         await queryRunner.release();
       }
     } else {
+      // Solo actualizar campos simples
       await saleRepo.save(sale);
     }
 
-    // Actividad...
+    // Registrar actividad
     await ActivityService.create({
       userId,
       module: ActivityModule.CATALOG,
@@ -341,7 +374,7 @@ export const CatalogService = {
       metadata: { orderNum: sale.orderNum, clientName: sale.clientName },
     });
 
-    // Recargar la venta (con queryRunner ya liberado)
+    // Recargar la venta con todas sus relaciones actualizadas
     const updatedSale = await saleRepo.findOne({
       where: { id: sale.id },
       relations: ["items", "payments"],
