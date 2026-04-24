@@ -272,13 +272,6 @@ export const CatalogService = {
     if (dto.title !== undefined) sale.title = dto.title;
     if (dto.clientPhone !== undefined) sale.clientPhone = dto.clientPhone ?? null;
 
-    // Si hay pagos, solo actualizar campos simples
-    if (sale.payments.length > 0 && dto.items !== undefined) {
-      throw new Error(
-        "No se pueden modificar los productos porque la venta ya tiene pagos registrados"
-      );
-    }
-
     // ── Reemplazar ítems (si se enviaron) ──────────────────────────────────
     if (dto.items !== undefined) {
       if (!dto.items.length) {
@@ -290,16 +283,15 @@ export const CatalogService = {
       const builtItems = await buildSaleItems(userId, dto.items);
       const newTotal = calcTotal(builtItems);
 
-      // Usar queryRunner para RAW SQL
       const queryRunner = AppDataSource.createQueryRunner();
 
       try {
         await queryRunner.connect();
         await queryRunner.startTransaction();
 
-        // PASO 1: Verificar que la venta existe
+        // PASO 1: Verificar que la venta existe (MySQL usa ?)
         const saleExists = await queryRunner.manager.query(
-          'SELECT id FROM sales WHERE id = $1 FOR UPDATE',
+          'SELECT id FROM sales WHERE id = ? FOR UPDATE',
           [sale.id]
         );
 
@@ -310,19 +302,18 @@ export const CatalogService = {
         // PASO 2: Eliminar items existentes
         console.log(`  🗑️ Eliminando items antiguos...`);
         const deleteResult = await queryRunner.manager.query(
-          'DELETE FROM sale_items WHERE "saleId" = $1',
+          'DELETE FROM sale_items WHERE saleId = ?',
           [sale.id]
         );
-        console.log(`  ✅ Eliminados ${deleteResult[1]} items`);
+        console.log(`  ✅ Eliminados`);
 
         // PASO 3: Insertar nuevos items
         console.log(`  📝 Insertando ${builtItems.length} nuevos items...`);
-        for (let i = 0; i < builtItems.length; i++) {
-          const item = builtItems[i];
+        for (const item of builtItems) {
           await queryRunner.manager.query(
             `INSERT INTO sale_items 
-           ("id", "saleId", "productId", "productName", "unitPrice", "quantity", "subtotal", "createdAt") 
-           VALUES (UUID(), $1, $2, $3, $4, $5, $6, NOW())`,
+           (id, saleId, productId, productName, unitPrice, quantity, subtotal, createdAt) 
+           VALUES (UUID(), ?, ?, ?, ?, ?, ?, NOW())`,
             [
               sale.id,
               item.productId,
@@ -338,10 +329,10 @@ export const CatalogService = {
         // PASO 4: Actualizar totales de la venta
         await queryRunner.manager.query(
           `UPDATE sales 
-         SET "totalAmount" = $1, 
-             "balance" = $2, 
-             "updatedAt" = NOW() 
-         WHERE id = $3`,
+         SET totalAmount = ?, 
+             balance = ?, 
+             updatedAt = NOW() 
+         WHERE id = ?`,
           [newTotal, newTotal, sale.id]
         );
         console.log(`  ✅ Venta actualizada: total $${newTotal}`);
