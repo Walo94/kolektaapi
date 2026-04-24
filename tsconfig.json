@@ -16,7 +16,7 @@
     "allowSyntheticDefaultImports": true,
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
-    "types": ["node", "googleapis"],
+    "types": ["node"],
     "lib": [
       "ES2022"
     ],
