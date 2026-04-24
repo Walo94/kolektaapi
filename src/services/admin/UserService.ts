@@ -16,7 +16,7 @@ export enum SubscriptionPlan {
 
 export const UserService = {
   async register(data: any) {
-    const { email, password, fullName, userAccount, phone } = data;
+    const { email, password, fullName, phone } = data;
 
     // Validar que el correo o teléfono no existan
     const existingUser = await userRepo.findOne({

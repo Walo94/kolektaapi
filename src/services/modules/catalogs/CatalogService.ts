@@ -272,22 +272,30 @@ export const CatalogService = {
       const builtItems = await buildSaleItems(userId, dto.items);
       const newTotal = calcTotal(builtItems);
 
-      // Eliminar ítems anteriores
-      if (sale.items?.length) {
-        await itemRepo.remove(sale.items);
-      }
+      // Usar transacción para garantizar el orden: DELETE → INSERT → UPDATE
+      // Evita la violación de FK que ocurre cuando TypeORM intenta insertar
+      // los nuevos ítems antes de eliminar los anteriores.
+      await AppDataSource.transaction(async (manager) => {
+        // 1. Eliminar todos los ítems anteriores directamente por saleId
+        await manager.delete(SaleItem, { saleId: sale.id });
 
-      // Insertar nuevos ítems
-      const newSaleItems = itemRepo.create(
-        builtItems.map((i) => ({ ...i, saleId: sale.id })),
-      );
-      await itemRepo.save(newSaleItems);
+        // 2. Insertar los nuevos ítems
+        const newSaleItems = manager.create(
+          SaleItem,
+          builtItems.map((i) => ({ ...i, saleId: sale.id })),
+        );
+        await manager.save(SaleItem, newSaleItems);
 
-      sale.totalAmount = newTotal;
-      sale.balance = newTotal; // sin pagos, balance = total
+        // 3. Actualizar totales en la venta
+        sale.totalAmount = newTotal;
+        sale.balance = newTotal; // sin pagos, balance = total
+        await manager.save(Sale, sale);
+      });
+    } else {
+      await saleRepo.save(sale);
     }
 
-    const updated = await saleRepo.save(sale);
+    const updated = await saleRepo.findOne({ where: { id: sale.id } });
 
     await ActivityService.create({
       userId,
@@ -302,7 +310,7 @@ export const CatalogService = {
 
     // Recargar con relaciones actualizadas
     return (await saleRepo.findOne({
-      where: { id: updated.id },
+      where: { id: sale.id },
       relations: ["items", "payments"],
     }))!;
   },
