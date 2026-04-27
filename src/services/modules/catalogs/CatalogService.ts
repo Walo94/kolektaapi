@@ -316,15 +316,16 @@ export const CatalogService = {
         for (const item of builtItems) {
           await queryRunner.manager.query(
             `INSERT INTO sale_items 
-           (id, saleId, productId, productName, unitPrice, quantity, subtotal, createdAt) 
-           VALUES (UUID(), ?, ?, ?, ?, ?, ?, NOW())`,
+           (id, saleId, productId, productName, unitPrice, quantity, subtotal, imageUrl, createdAt) 
+     VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, NOW())`,
             [
               sale.id,
               item.productId,
               item.productName,
               item.unitPrice,
               item.quantity,
-              item.subtotal
+              item.subtotal,
+              item.imageUrl,
             ]
           );
         }
@@ -339,11 +340,9 @@ export const CatalogService = {
          WHERE id = ?`,
           [newTotal, newTotal, sale.id]
         );
-        console.log(`  ✅ Venta actualizada: total $${newTotal}`);
 
         // Confirmar todo
         await queryRunner.commitTransaction();
-        console.log(`✅ Venta ${sale.orderNum} actualizada exitosamente`);
 
       } catch (error) {
         await queryRunner.rollbackTransaction();
