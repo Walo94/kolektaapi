@@ -90,6 +90,7 @@ async function buildSaleItems(
 
     let productName: string;
     let unitPrice: number;
+    let imageUrl: string | null = null;
 
     if (input.productId) {
       // Resolver snapshot desde el catálogo (verificar que pertenece al usuario)
@@ -101,6 +102,7 @@ async function buildSaleItems(
       }
       productName = product.description;
       unitPrice = toNumber(product.price);
+      imageUrl = product.imageUrl ?? null;
     } else {
       // Producto libre — requiere description y price explícitos
       if (!input.description?.trim()) {
@@ -115,6 +117,7 @@ async function buildSaleItems(
       }
       productName = input.description.trim();
       unitPrice = input.price;
+      imageUrl = null;
     }
 
     const subtotal = parseFloat((unitPrice * input.quantity).toFixed(2));
@@ -125,6 +128,7 @@ async function buildSaleItems(
       unitPrice,
       quantity: input.quantity,
       subtotal,
+      imageUrl,
     });
   }
 

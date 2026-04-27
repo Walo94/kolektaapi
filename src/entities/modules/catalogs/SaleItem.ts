@@ -51,6 +51,9 @@ export class SaleItem {
   @Column({ type: "decimal", precision: 10, scale: 2 })
   subtotal!: number;
 
+  @Column({ type: "varchar", length: 500, nullable: true })
+  imageUrl!: string | null;
+
   // ── Timestamp ─────────────────────────────────────────────────────────────
   @CreateDateColumn()
   createdAt!: Date;
