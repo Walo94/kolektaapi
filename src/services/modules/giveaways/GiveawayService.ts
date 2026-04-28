@@ -220,10 +220,10 @@ export const GiveawayService = {
       prizes = [],
     } = dto;
 
-    if (totalTickets < 2)
-      throw new Error("La rifa debe tener al menos 2 boletos");
-    if (totalTickets > 1000)
-      throw new Error("La rifa no puede tener más de 1,000 boletos");
+    if (totalTickets < 10)
+      throw new Error("La rifa debe tener al menos 10 boletos");
+    if (totalTickets > 200)
+      throw new Error("La rifa no puede tener más de 200 boletos");
     if (ticketPrice <= 0)
       throw new Error("El precio del boleto debe ser mayor a 0");
     if (prizeCount < 1) throw new Error("Debe haber al menos 1 premio");
