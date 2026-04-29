@@ -47,6 +47,7 @@ export interface CreateSaleDto {
 export interface UpdateSaleDto {
   title?: string;
   clientPhone?: string | null;
+  clientName?: string | null;
   /** Reemplaza todos los items de la venta. Solo permitido sin pagos activos. */
   items?: SaleItemInput[];
 }
@@ -275,6 +276,7 @@ export const CatalogService = {
     // Actualizar campos simples
     if (dto.title !== undefined) sale.title = dto.title;
     if (dto.clientPhone !== undefined) sale.clientPhone = dto.clientPhone ?? null;
+    if (dto.clientName !== undefined) sale.clientName = dto.clientName ?? null;
 
     // ── Reemplazar ítems (si se enviaron) ──────────────────────────────────
     if (dto.items !== undefined) {
@@ -282,7 +284,6 @@ export const CatalogService = {
         throw new Error("La venta debe tener al menos un producto");
       }
 
-      console.log(`🔄 Actualizando items de venta ${sale.orderNum}...`);
 
       const builtItems = await buildSaleItems(userId, dto.items);
       const newTotal = calcTotal(builtItems);
@@ -304,15 +305,13 @@ export const CatalogService = {
         }
 
         // PASO 2: Eliminar items existentes
-        console.log(`  🗑️ Eliminando items antiguos...`);
         const deleteResult = await queryRunner.manager.query(
           'DELETE FROM sale_items WHERE saleId = ?',
           [sale.id]
         );
-        console.log(`  ✅ Eliminados`);
+
 
         // PASO 3: Insertar nuevos items
-        console.log(`  📝 Insertando ${builtItems.length} nuevos items...`);
         for (const item of builtItems) {
           await queryRunner.manager.query(
             `INSERT INTO sale_items 
@@ -329,16 +328,18 @@ export const CatalogService = {
             ]
           );
         }
-        console.log(`  ✅ Insertados ${builtItems.length} items`);
 
         // PASO 4: Actualizar totales de la venta
         await queryRunner.manager.query(
           `UPDATE sales 
-         SET totalAmount = ?, 
+         SET totalAmount = ?,
+             title = ?, 
+             clientName = ?,
+             clientPhone = ?,
              balance = ?, 
              updatedAt = NOW() 
          WHERE id = ?`,
-          [newTotal, newTotal, sale.id]
+          [newTotal, sale.title, sale.clientName, sale.clientPhone, newTotal, sale.id]
         );
 
         // Confirmar todo
